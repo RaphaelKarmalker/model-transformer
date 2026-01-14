@@ -1,13 +1,23 @@
 # agent_orchester.py
 
-from pydantic import BaseModel
-from pydantic_ai import Agent
-from langgraph.graph import StateGraph, END
+import os
+import json
+import requests
 from typing import TypedDict, Union
+
+from pydantic import BaseModel
+from langgraph.graph import StateGraph, END
 
 
 # ------------------------------------------------------------
-# 0. OBJECT CATALOG
+# 0. MODEL CONFIG (Ollama Native API)
+# ------------------------------------------------------------
+OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+MODEL_NAME = "llama3.2"  # oder "qwen2.5:0.5b"
+
+
+# ------------------------------------------------------------
+# 1. OBJECT CATALOG
 # ------------------------------------------------------------
 
 OBJECT_ID_TABLE = {
@@ -25,7 +35,7 @@ OBJECT_ID_TABLE = {
 
 
 # ------------------------------------------------------------
-# 1. PYDANTIC MODELS
+# 2. PYDANTIC MODELS
 # ------------------------------------------------------------
 
 class ObjectMatch(BaseModel):
@@ -42,13 +52,19 @@ class ModelTransformation(BaseModel):
 
 
 # ------------------------------------------------------------
-# 2. AGENTS
+# 3. OLLAMA NATIVE API FUNCTIONS
 # ------------------------------------------------------------
 
-agent_identifier = Agent(
-    model="openai:gpt-4o-mini",
-    output_type=ObjectMatch,
-    system_prompt=(
+def ollama_identify_object(prompt_text: str, model: str = MODEL_NAME) -> ObjectMatch:
+    """
+    Identifiziert ein Objekt aus dem Prompt.
+    
+    Rules:
+    1) Wenn genau 1 Objekt gefunden → return object_id + object_name
+    2) Wenn kein Objekt gefunden → object_id='' und object_name=''
+    3) Wenn mehrere Objekte → object_id='MULTI' und object_name='MULTI'
+    """
+    system_prompt = (
         "Your task is to identify the referenced object from the provided prompt.\n"
         "You receive:\n"
         "- a user prompt\n"
@@ -57,32 +73,77 @@ agent_identifier = Agent(
         "1) If the prompt clearly refers to exactly one object in the table, return it.\n"
         "2) If NO object matches, return object_id='' and object_name=''.\n"
         "3) If MORE THAN ONE object matches, return object_id='MULTI' and object_name='MULTI'.\n"
-        "Return only the structured fields."
-    ),
-)
+        "Return only valid JSON matching this schema: {\"object_id\": \"string\", \"object_name\": \"string\"}"
+    )
+    
+    full_prompt = f"{system_prompt}\n\n{prompt_text}"
+    
+    url = f"{OLLAMA_BASE_URL}/api/generate"
+    payload = {
+        "model": model,
+        "prompt": full_prompt,
+        "format": "json",
+        "stream": False
+    }
+    
+    response = requests.post(url, json=payload)
+    response.raise_for_status()
+    
+    result = response.json()
+    response_text = result.get("response", "{}")
+    data = json.loads(response_text)
+    
+    return ObjectMatch(**data)
 
-agent_transform = Agent(
-    model="openai:gpt-4o-mini",
-    output_type=Union[ModelTransformation, str],
-    system_prompt=(
+
+def ollama_validate_transformation(prompt_text: str, model: str = MODEL_NAME) -> Union[ModelTransformation, str]:
+    """
+    Validiert, ob die Transformation mit den erlaubten Feldern darstellbar ist.
+    
+    Returns:
+    - ModelTransformation wenn darstellbar
+    - String "INVALID" wenn nicht darstellbar (flip, mirror, translate, etc.)
+    """
+    system_prompt = (
         "You must attempt to translate the user's transformation request into a "
         "ModelTransformation object with fields:\n"
         "- rotate_x, rotate_y, rotate_z, zoom\n\n"
         "Rules:\n"
         "1) If the transformation CAN be represented using ONLY these fields, "
-        "   return a correct ModelTransformation.\n"
+        "   return valid JSON: {\"object_id\": \"string\", \"rotate_x\": float, \"rotate_y\": float, \"rotate_z\": float, \"zoom\": float}\n"
         "2) If the requested action CANNOT be represented using only these fields "
         "   (e.g., flip, mirror, translate, shear, bend, invert, unspecified rotation, "
-        "   or anything outside the 4 allowed parameters), return the literal string "
-        "   'INVALID'.\n"
+        "   or anything outside the 4 allowed parameters), return exactly: {\"status\": \"INVALID\"}\n"
         "3) Do NOT attempt workarounds.\n"
-        "4) Return exactly one thing: a valid ModelTransformation OR 'INVALID'."
-    ),
-)
+        "Return ONLY valid JSON."
+    )
+    
+    full_prompt = f"{system_prompt}\n\n{prompt_text}"
+    
+    url = f"{OLLAMA_BASE_URL}/api/generate"
+    payload = {
+        "model": model,
+        "prompt": full_prompt,
+        "format": "json",
+        "stream": False
+    }
+    
+    response = requests.post(url, json=payload)
+    response.raise_for_status()
+    
+    result = response.json()
+    response_text = result.get("response", "{}")
+    data = json.loads(response_text)
+    
+    # Check if INVALID
+    if "status" in data and data["status"] == "INVALID":
+        return "INVALID"
+    
+    return ModelTransformation(**data)
 
 
 # ------------------------------------------------------------
-# 3. LANGGRAPH STATE
+# 4. LANGGRAPH STATE
 # ------------------------------------------------------------
 
 class GraphState(TypedDict):
@@ -96,20 +157,24 @@ class GraphState(TypedDict):
 
 
 # ------------------------------------------------------------
-# 4. NODES
+# 5. NODES
 # ------------------------------------------------------------
 
-# ---------- IDENTIFIER NODE ----------
 def node_identifier(state: GraphState):
+    print("[DEBUG] node_identifier START")
     text = (
-        f"PROMPT:\n{state['prompt']}\n\nOBJECT TABLE:\n{state['object_table']}"
+        f"PROMPT:\n{state['prompt']}\n\n"
+        f"OBJECT TABLE:\n{state['object_table']}"
     )
+    print(f"[DEBUG] Sending to ollama_identify_object: {text[:100]}...")
 
-    result = agent_identifier.run_sync(text)
-    match = result.output
+    match = ollama_identify_object(text)
+    print(f"[DEBUG] ollama_identify_object result: {match}")
+    print(f"[DEBUG] Matched object_id={match.object_id}, object_name={match.object_name}")
 
     # UNKNOWN
     if match.object_id == "":
+        print("[DEBUG] Object UNKNOWN")
         return {
             "object_id": None,
             "object_name": None,
@@ -118,6 +183,7 @@ def node_identifier(state: GraphState):
 
     # AMBIGUOUS
     if match.object_id == "MULTI":
+        print("[DEBUG] Object AMBIGUOUS")
         return {
             "object_id": None,
             "object_name": None,
@@ -125,6 +191,7 @@ def node_identifier(state: GraphState):
         }
 
     # UNIQUE MATCH
+    print("[DEBUG] Object FOUND")
     return {
         "object_id": match.object_id,
         "object_name": match.object_name,
@@ -132,33 +199,47 @@ def node_identifier(state: GraphState):
     }
 
 
-# ---------- TRANSFORMATION NODE ----------
 def node_transformation(state: GraphState):
+    print("[DEBUG] node_transformation START")
     combined = (
         f"PROMPT: {state['prompt']}\n"
-        f"OBJECT ID: {state['object_id']}"
+        f"OBJECT ID: {state['object_id']}\n"
+        f"OBJECT NAME: {state['object_name']}"
     )
+    print(f"[DEBUG] Sending to ollama_validate_transformation: {combined}")
 
-    result = agent_transform.run_sync(combined)
+    result = ollama_validate_transformation(combined)
+    print(f"[DEBUG] ollama_validate_transformation result: {result}")
 
-    # Agent returns either ModelTransformation OR "INVALID"
-    if isinstance(result.output, str) and result.output.strip().upper() == "INVALID":
+    # Returns either ModelTransformation OR "INVALID"
+    if isinstance(result, str) and result.strip().upper() == "INVALID":
+        print("[DEBUG] Transformation INVALID")
         return {
             "transformation": None,
             "cancel_reason": "invalid_action",
         }
 
+    t: ModelTransformation = result
+    print(f"[DEBUG] Transformation: rotate_x={t.rotate_x}, rotate_y={t.rotate_y}, rotate_z={t.rotate_z}, zoom={t.zoom}")
+
+    # Ensure object_id is set consistently (helpful for downstream)
+    if not getattr(t, "object_id", None):
+        t.object_id = state["object_id"]  # type: ignore[assignment]
+
+    print("[DEBUG] Transformation VALID")
     return {
-        "transformation": result.output,
+        "transformation": t,
         "cancel_reason": None,
     }
 
 
-# ---------- EXECUTE NODE ----------
 def node_execute(state: GraphState):
     t = state["transformation"]
     name = state["object_name"]
     oid = state["object_id"]
+
+    if t is None or name is None or oid is None:
+        return {"user_output": "Internal error: missing transformation or object."}
 
     msg = (
         f"Executing transformation on '{name}' (ID: {oid}): "
@@ -168,22 +249,18 @@ def node_execute(state: GraphState):
     return {"user_output": msg}
 
 
-# ---------- CANCEL NODE ----------
 def node_cancel(state: GraphState):
     r = state["cancel_reason"]
 
     if r == "unknown_object":
         msg = "This object does not exist. Please describe the object more clearly."
-
     elif r == "ambiguous":
         msg = "Your request is ambiguous. Please clarify which object you mean."
-
     elif r == "invalid_action":
         msg = (
             "The requested action cannot be represented by this system. "
             "Allowed fields are rotate_x, rotate_y, rotate_z, and zoom."
         )
-
     else:
         msg = "The request could not be completed."
 
@@ -191,7 +268,7 @@ def node_cancel(state: GraphState):
 
 
 # ------------------------------------------------------------
-# 5. BUILD GRAPH
+# 6. BUILD GRAPH
 # ------------------------------------------------------------
 
 graph = StateGraph(GraphState)
@@ -202,23 +279,22 @@ graph.add_node("cancel", node_cancel)
 graph.set_entry_point("identifier")
 
 
-# Routing: after identifier
 def after_identifier(state: GraphState):
     if state["cancel_reason"] is not None:
         return "cancel"
     return "transformation"
 
+
 graph.add_conditional_edges("identifier", after_identifier)
 
 
-# Routing: after transformation
 def after_transformation(state: GraphState):
     if state["cancel_reason"] is not None:
         return "cancel"
     return "execute"
 
-graph.add_conditional_edges("transformation", after_transformation)
 
+graph.add_conditional_edges("transformation", after_transformation)
 
 graph.add_edge("execute", END)
 graph.add_edge("cancel", END)
@@ -227,13 +303,16 @@ app = graph.compile()
 
 
 # ------------------------------------------------------------
-# 6. MAIN
+# 7. MAIN
 # ------------------------------------------------------------
 
 if __name__ == "__main__":
-   # prompt = "Rotate the main_shaft by 30 degrees on the x-axis."
+    print("[DEBUG] Script START")
+    # prompt = "Rotate the main_shaft by 30 degrees on the x-axis."
     prompt = "flip the main shaft by 30 degrees on the x-axis."
+    print(f"[DEBUG] Prompt: {prompt}")
 
+    print("[DEBUG] Invoking graph...")
     result = app.invoke({"prompt": prompt, "object_table": OBJECT_ID_TABLE})
 
     print("\n=== RESULT ===")
