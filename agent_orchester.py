@@ -1,19 +1,129 @@
 # agent_orchester.py
 
-import os
 import json
-import requests
-from typing import TypedDict, Union
+import yaml
+from typing import TypedDict, Union, Type, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, END
+from transformers import pipeline
+
+T = TypeVar('T', bound=BaseModel)
 
 
 # ------------------------------------------------------------
-# 0. MODEL CONFIG (Ollama Native API)
+# 0. LOAD CONFIG
 # ------------------------------------------------------------
-OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-MODEL_NAME = "llama3.2"  # oder "qwen2.5:0.5b"
+def load_config(config_path: str = "config.yaml") -> dict:
+    """Lädt die Konfiguration aus der YAML-Datei."""
+    with open(config_path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f)
+
+config = load_config()
+MODEL_ID = config['model']['id']
+MAX_TOKENS = config['model'].get('max_tokens', 256)
+TORCH_DTYPE = config['model'].get('torch_dtype', 'auto')
+DEVICE_MAP = config['model'].get('device_map', 'auto')
+
+# Generation parameters
+TEMPERATURE = config['generation'].get('temperature', 0.7)
+TOP_P = config['generation'].get('top_p', 0.9)
+DO_SAMPLE = config['generation'].get('do_sample', True)
+
+print(f"[INFO] Loading model: {MODEL_ID}")
+pipe = pipeline(
+    "text-generation",
+    model=MODEL_ID,
+    torch_dtype=TORCH_DTYPE,
+    device_map=DEVICE_MAP,
+)
+print("[INFO] Model loaded successfully!")
+
+
+# ------------------------------------------------------------
+# 0.1 STRUCTURED OUTPUT HELPER
+# ------------------------------------------------------------
+
+def generate_structured_output(
+    system_prompt: str,
+    user_prompt: str,
+    response_model: Type[T],
+    max_tokens: int = None,
+    max_retries: int = 3
+) -> T:
+    """
+    Generiert strukturierte Outputs mit automatischem Pydantic Parsing und Retry-Logic.
+    
+    Args:
+        system_prompt: System instructions
+        user_prompt: User query
+        response_model: Pydantic Model class für das erwartete Response-Format
+        max_tokens: Max tokens für Generation
+        max_retries: Anzahl Wiederholungen bei Parse-Fehlern
+    
+    Returns:
+        Validiertes Pydantic Model Objekt
+    """
+    if max_tokens is None:
+        max_tokens = MAX_TOKENS
+    
+    # Add JSON schema to system prompt
+    schema = response_model.model_json_schema()
+    enhanced_system_prompt = (
+        f"{system_prompt}\n\n"
+        f"You MUST respond with valid JSON matching this exact schema:\n"
+        f"{json.dumps(schema, indent=2)}\n\n"
+        f"Return ONLY the JSON object, no explanations or markdown."
+    )
+    
+    messages = [
+        {"role": "system", "content": enhanced_system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    
+    response_text = ""  # Initialize for error handling
+    
+    for attempt in range(max_retries):
+        try:
+            # Generate response
+            outputs = pipe(
+                messages,
+                max_new_tokens=max_tokens,
+                temperature=TEMPERATURE,
+                top_p=TOP_P,
+                do_sample=DO_SAMPLE,
+            )
+            
+            response_text = outputs[0]["generated_text"][-1]["content"]
+            
+            # Clean up response (remove markdown code blocks if present)
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            # Parse JSON and validate with Pydantic
+            data = json.loads(response_text)
+            return response_model.model_validate(data)
+            
+        except (json.JSONDecodeError, ValidationError) as e:
+            print(f"[WARNING] Attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt == max_retries - 1:
+                raise ValueError(f"Failed to generate valid {response_model.__name__} after {max_retries} attempts")
+            # Add error feedback for next attempt
+            if response_text:
+                messages.append({
+                    "role": "assistant",
+                    "content": response_text
+                })
+                messages.append({
+                    "role": "user",
+                    "content": f"That was invalid. Error: {str(e)}. Please try again with valid JSON."
+                })
 
 
 # ------------------------------------------------------------
@@ -39,25 +149,27 @@ OBJECT_ID_TABLE = {
 # ------------------------------------------------------------
 
 class ObjectMatch(BaseModel):
-    object_id: str
-    object_name: str
+    """Result from object identification."""
+    object_id: str = Field(description="The unique ID of the object, or empty string if not found, or 'MULTI' if ambiguous")
+    object_name: str = Field(description="The name of the object, or empty string if not found, or 'MULTI' if ambiguous")
 
 
 class ModelTransformation(BaseModel):
-    object_id: str
-    rotate_x: float
-    rotate_y: float
-    rotate_z: float
-    zoom: float
+    """Represents a valid 3D model transformation."""
+    object_id: str = Field(description="The unique ID of the object to transform")
+    rotate_x: float = Field(description="Rotation around X-axis in degrees")
+    rotate_y: float = Field(description="Rotation around Y-axis in degrees")
+    rotate_z: float = Field(description="Rotation around Z-axis in degrees")
+    zoom: float = Field(description="Zoom factor (1.0 = no zoom, >1 = zoom in, <1 = zoom out)")
 
 
 # ------------------------------------------------------------
-# 3. OLLAMA NATIVE API FUNCTIONS
+# 3. AGENT FUNCTIONS WITH STRUCTURED OUTPUTS
 # ------------------------------------------------------------
 
-def ollama_identify_object(prompt_text: str, model: str = MODEL_NAME) -> ObjectMatch:
+def identify_object(prompt_text: str) -> ObjectMatch:
     """
-    Identifiziert ein Objekt aus dem Prompt.
+    Identifiziert ein Objekt aus dem Prompt mit strukturiertem Output.
     
     Rules:
     1) Wenn genau 1 Objekt gefunden → return object_id + object_name
@@ -66,80 +178,83 @@ def ollama_identify_object(prompt_text: str, model: str = MODEL_NAME) -> ObjectM
     """
     system_prompt = (
         "Your task is to identify the referenced object from the provided prompt.\n"
-        "You receive:\n"
-        "- a user prompt\n"
-        "- a dictionary of known object names and IDs\n\n"
+        "You receive a user prompt and a dictionary of known object names and IDs.\n\n"
         "Rules:\n"
-        "1) If the prompt clearly refers to exactly one object in the table, return it.\n"
+        "1) If the prompt clearly refers to exactly one object in the table, return its object_id and object_name.\n"
         "2) If NO object matches, return object_id='' and object_name=''.\n"
-        "3) If MORE THAN ONE object matches, return object_id='MULTI' and object_name='MULTI'.\n"
-        "Return only valid JSON matching this schema: {\"object_id\": \"string\", \"object_name\": \"string\"}"
+        "3) If MORE THAN ONE object matches, return object_id='MULTI' and object_name='MULTI'."
     )
     
-    full_prompt = f"{system_prompt}\n\n{prompt_text}"
-    
-    url = f"{OLLAMA_BASE_URL}/api/generate"
-    payload = {
-        "model": model,
-        "prompt": full_prompt,
-        "format": "json",
-        "stream": False
-    }
-    
-    response = requests.post(url, json=payload)
-    response.raise_for_status()
-    
-    result = response.json()
-    response_text = result.get("response", "{}")
-    data = json.loads(response_text)
-    
-    return ObjectMatch(**data)
+    return generate_structured_output(
+        system_prompt=system_prompt,
+        user_prompt=prompt_text,
+        response_model=ObjectMatch,
+        max_tokens=128
+    )
 
 
-def ollama_validate_transformation(prompt_text: str, model: str = MODEL_NAME) -> Union[ModelTransformation, str]:
+class TransformationResponse(BaseModel):
+    """Union response for transformation validation."""
+    # If valid transformation
+    object_id: str | None = Field(default=None, description="The unique ID of the object to transform")
+    rotate_x: float | None = Field(default=None, description="Rotation around X-axis in degrees")
+    rotate_y: float | None = Field(default=None, description="Rotation around Y-axis in degrees")
+    rotate_z: float | None = Field(default=None, description="Rotation around Z-axis in degrees")
+    zoom: float | None = Field(default=None, description="Zoom factor (1.0 = no zoom)")
+    # If invalid transformation
+    status: str | None = Field(default=None, description="Set to 'INVALID' if transformation cannot be represented")
+
+
+def validate_transformation(prompt_text: str) -> Union[ModelTransformation, str]:
     """
-    Validiert, ob die Transformation mit den erlaubten Feldern darstellbar ist.
+    Validiert eine Transformation mit strukturiertem Output.
     
     Returns:
     - ModelTransformation wenn darstellbar
-    - String "INVALID" wenn nicht darstellbar (flip, mirror, translate, etc.)
+    - String "INVALID" wenn nicht darstellbar
     """
     system_prompt = (
-        "You must attempt to translate the user's transformation request into a "
-        "ModelTransformation object with fields:\n"
-        "- rotate_x, rotate_y, rotate_z, zoom\n\n"
+        "You must translate the user's transformation request.\n"
+        "Allowed transformation fields: rotate_x, rotate_y, rotate_z, zoom\n\n"
         "Rules:\n"
-        "1) If the transformation CAN be represented using ONLY these fields, "
-        "   return valid JSON: {\"object_id\": \"string\", \"rotate_x\": float, \"rotate_y\": float, \"rotate_z\": float, \"zoom\": float}\n"
-        "2) If the requested action CANNOT be represented using only these fields "
-        "   (e.g., flip, mirror, translate, shear, bend, invert, unspecified rotation, "
-        "   or anything outside the 4 allowed parameters), return exactly: {\"status\": \"INVALID\"}\n"
-        "3) Do NOT attempt workarounds.\n"
-        "Return ONLY valid JSON."
+        "1) If the transformation CAN be represented using ONLY rotate_x, rotate_y, rotate_z, and zoom,\n"
+        "   return: {\"object_id\": \"<id>\", \"rotate_x\": <float>, \"rotate_y\": <float>, \"rotate_z\": <float>, \"zoom\": <float>}\n"
+        "2) If the requested action CANNOT be represented (e.g., flip, mirror, translate, shear, move),\n"
+        "   return: {\"status\": \"INVALID\"}\n"
+        "3) 'flip' is NOT the same as 'rotate' - flip requires mirroring which is NOT supported.\n"
+        "4) Be strict about what transformations are allowed."
     )
     
-    full_prompt = f"{system_prompt}\n\n{prompt_text}"
-    
-    url = f"{OLLAMA_BASE_URL}/api/generate"
-    payload = {
-        "model": model,
-        "prompt": full_prompt,
-        "format": "json",
-        "stream": False
-    }
-    
-    response = requests.post(url, json=payload)
-    response.raise_for_status()
-    
-    result = response.json()
-    response_text = result.get("response", "{}")
-    data = json.loads(response_text)
-    
-    # Check if INVALID
-    if "status" in data and data["status"] == "INVALID":
+    try:
+        result = generate_structured_output(
+            system_prompt=system_prompt,
+            user_prompt=prompt_text,
+            response_model=TransformationResponse,
+            max_tokens=256
+        )
+        
+        # Check if it's an INVALID response
+        if result.status and result.status.upper() == "INVALID":
+            return "INVALID"
+        
+        # Check if we have valid transformation fields
+        if result.rotate_x is not None and result.rotate_y is not None and result.rotate_z is not None and result.zoom is not None:
+            return ModelTransformation(
+                object_id=result.object_id or "",
+                rotate_x=result.rotate_x,
+                rotate_y=result.rotate_y,
+                rotate_z=result.rotate_z,
+                zoom=result.zoom
+            )
+        
+        # If neither valid transformation nor explicit INVALID, assume invalid
         return "INVALID"
-    
-    return ModelTransformation(**data)
+        
+    except ValueError as e:
+        print(f"[ERROR] validate_transformation failed: {e}")
+        return "INVALID"
+
+
 
 
 # ------------------------------------------------------------
@@ -166,10 +281,10 @@ def node_identifier(state: GraphState):
         f"PROMPT:\n{state['prompt']}\n\n"
         f"OBJECT TABLE:\n{state['object_table']}"
     )
-    print(f"[DEBUG] Sending to ollama_identify_object: {text[:100]}...")
+    print(f"[DEBUG] Calling identify_object with structured output...")
 
-    match = ollama_identify_object(text)
-    print(f"[DEBUG] ollama_identify_object result: {match}")
+    match = identify_object(text)
+    print(f"[DEBUG] Structured output result: {match}")
     print(f"[DEBUG] Matched object_id={match.object_id}, object_name={match.object_name}")
 
     # UNKNOWN
@@ -206,10 +321,10 @@ def node_transformation(state: GraphState):
         f"OBJECT ID: {state['object_id']}\n"
         f"OBJECT NAME: {state['object_name']}"
     )
-    print(f"[DEBUG] Sending to ollama_validate_transformation: {combined}")
+    print(f"[DEBUG] Calling validate_transformation with structured output...")
 
-    result = ollama_validate_transformation(combined)
-    print(f"[DEBUG] ollama_validate_transformation result: {result}")
+    result = validate_transformation(combined)
+    print(f"[DEBUG] Structured output result: {result}")
 
     # Returns either ModelTransformation OR "INVALID"
     if isinstance(result, str) and result.strip().upper() == "INVALID":

@@ -1,0 +1,24 @@
+# Model Configuration
+# Wähle eines der folgenden Modelle oder gib einen eigenen HuggingFace Model-ID an
+
+model:
+  # Aktuelles Modell (kann geändert werden)
+  id: "Qwen/Qwen2.5-7B-Instruct"
+  
+  # Alternative Modelle (auskommentiert):
+  # id: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+  # id: "openai/gpt-oss-20b"
+  # id: "mistralai/Mistral-7B-Instruct-v0.3"
+  # id: "microsoft/Phi-3-mini-4k-instruct"
+  # id: "Qwen/Qwen2.5-7B-Instruct"
+  
+  # Modell-Parameter
+  max_tokens: 256
+  torch_dtype: "auto"  # "auto", "float16", "bfloat16", oder "float32"
+  device_map: "auto"   # "auto", "cuda", "cpu", oder spezifische GPU wie "cuda:0"
+
+# LLM-Prompting Parameter
+generation:
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
