@@ -44,6 +44,41 @@ print("[INFO] Model loaded successfully!")
 # 0.1 STRUCTURED OUTPUT HELPER
 # ------------------------------------------------------------
 
+def extract_json_from_text(text: str) -> str:
+    """
+    Extracts JSON object from text that may contain additional content.
+    Looks for content between first { and last matching }.
+    """
+    import re
+    
+    # First try to find JSON in code blocks
+    code_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if code_block_match:
+        return code_block_match.group(1)
+    
+    # Find the first { and track matching braces
+    start_idx = text.find('{')
+    if start_idx == -1:
+        return ""
+    
+    brace_count = 0
+    end_idx = start_idx
+    
+    for i, char in enumerate(text[start_idx:], start=start_idx):
+        if char == '{':
+            brace_count += 1
+        elif char == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                end_idx = i
+                break
+    
+    if brace_count == 0:
+        return text[start_idx:end_idx + 1]
+    
+    return ""
+
+
 def generate_structured_output(
     system_prompt: str,
     user_prompt: str,
@@ -67,13 +102,37 @@ def generate_structured_output(
     if max_tokens is None:
         max_tokens = MAX_TOKENS
     
-    # Add JSON schema to system prompt
+    # Build a simpler schema description with example
     schema = response_model.model_json_schema()
+    properties = schema.get("properties", {})
+    required_fields = schema.get("required", [])
+    
+    # Create a simple field description
+    field_descriptions = []
+    example_obj = {}
+    for field_name, field_info in properties.items():
+        field_type = field_info.get("type", "string")
+        field_desc = field_info.get("description", "")
+        field_descriptions.append(f'  - "{field_name}" ({field_type}): {field_desc}')
+        # Create example value
+        if field_type == "number":
+            example_obj[field_name] = 0.0
+        elif field_type == "integer":
+            example_obj[field_name] = 0
+        elif field_type == "boolean":
+            example_obj[field_name] = False
+        else:
+            example_obj[field_name] = "example_value"
+    
+    fields_text = "\n".join(field_descriptions)
+    example_json = json.dumps(example_obj, indent=2)
+    
     enhanced_system_prompt = (
         f"{system_prompt}\n\n"
-        f"You MUST respond with valid JSON matching this exact schema:\n"
-        f"{json.dumps(schema, indent=2)}\n\n"
-        f"Return ONLY the JSON object, no explanations or markdown."
+        f"IMPORTANT: You MUST respond with ONLY a JSON object. No explanations, no analysis, no markdown.\n\n"
+        f"Required JSON fields:\n{fields_text}\n\n"
+        f"Example response format:\n{example_json}\n\n"
+        f"Your response must start with {{ and end with }}. Nothing else."
     )
     
     messages = [
@@ -85,29 +144,31 @@ def generate_structured_output(
     
     for attempt in range(max_retries):
         try:
-            # Generate response
+            # Generate response - use deterministic settings for structured output
             outputs = pipe(
                 messages,
                 max_new_tokens=max_tokens,
-                temperature=TEMPERATURE,
-                top_p=TOP_P,
-                do_sample=DO_SAMPLE,
+                temperature=0.0,  # Deterministic for consistent JSON
+                do_sample=False,  # No sampling for structured output
             )
             
-            response_text = outputs[0]["generated_text"][-1]["content"]
+            # Extract assistant response - handle different output formats
+            generated_text = outputs[0]["generated_text"]
+            if isinstance(generated_text, list):
+                # Chat format: list of messages
+                response_text = generated_text[-1]["content"] if generated_text else ""
+            else:
+                # Plain text format: need to extract only the new content
+                response_text = str(generated_text)
             
-            # Clean up response (remove markdown code blocks if present)
-            response_text = response_text.strip()
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.startswith("```"):
-                response_text = response_text[3:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-            response_text = response_text.strip()
+            # Extract JSON from the response (handles extra text before/after JSON)
+            json_text = extract_json_from_text(response_text)
+            
+            if not json_text:
+                raise json.JSONDecodeError("No JSON object found in response", response_text, 0)
             
             # Parse JSON and validate with Pydantic
-            data = json.loads(response_text)
+            data = json.loads(json_text)
             return response_model.model_validate(data)
             
         except (json.JSONDecodeError, ValidationError) as e:
@@ -122,7 +183,7 @@ def generate_structured_output(
                 })
                 messages.append({
                     "role": "user",
-                    "content": f"That was invalid. Error: {str(e)}. Please try again with valid JSON."
+                    "content": f"Invalid response. Return ONLY a JSON object like: {example_json}"
                 })
 
 
@@ -189,7 +250,7 @@ def identify_object(prompt_text: str) -> ObjectMatch:
         system_prompt=system_prompt,
         user_prompt=prompt_text,
         response_model=ObjectMatch,
-        max_tokens=128
+        max_tokens=256  # More tokens for chain-of-thought models
     )
 
 
@@ -214,15 +275,13 @@ def validate_transformation(prompt_text: str) -> Union[ModelTransformation, str]
     - String "INVALID" wenn nicht darstellbar
     """
     system_prompt = (
-        "You must translate the user's transformation request.\n"
-        "Allowed transformation fields: rotate_x, rotate_y, rotate_z, zoom\n\n"
-        "Rules:\n"
-        "1) If the transformation CAN be represented using ONLY rotate_x, rotate_y, rotate_z, and zoom,\n"
-        "   return: {\"object_id\": \"<id>\", \"rotate_x\": <float>, \"rotate_y\": <float>, \"rotate_z\": <float>, \"zoom\": <float>}\n"
-        "2) If the requested action CANNOT be represented (e.g., flip, mirror, translate, shear, move),\n"
-        "   return: {\"status\": \"INVALID\"}\n"
-        "3) 'flip' is NOT the same as 'rotate' - flip requires mirroring which is NOT supported.\n"
-        "4) Be strict about what transformations are allowed."
+        "Translate the user's transformation request into JSON.\n"
+        "Allowed: rotate_x, rotate_y, rotate_z (degrees), zoom (1.0=none).\n\n"
+        "For VALID transformations (rotate, zoom only):\n"
+        '{"object_id": "ID", "rotate_x": 0, "rotate_y": 0, "rotate_z": 0, "zoom": 1.0, "status": ""}\n\n'
+        "For INVALID transformations (flip, mirror, move, translate, shear):\n"
+        '{"status": "INVALID"}\n\n'
+        "IMPORTANT: flip is NOT rotate. flip=mirror=INVALID."
     )
     
     try:
@@ -230,7 +289,7 @@ def validate_transformation(prompt_text: str) -> Union[ModelTransformation, str]
             system_prompt=system_prompt,
             user_prompt=prompt_text,
             response_model=TransformationResponse,
-            max_tokens=256
+            max_tokens=512  # More tokens for chain-of-thought models
         )
         
         # Check if it's an INVALID response
