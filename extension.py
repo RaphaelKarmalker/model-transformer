@@ -914,11 +914,20 @@ RULES:
 Return action_type as one of: 'transform', 'color', 'material', 'unknown', 'ambiguous', 'invalid'
 Set error_message to explain issues if action_type is unknown/ambiguous/invalid.
 
-For MATERIAL changes (shiny, matte, metallic, plastic):
+For MATERIAL changes (shiny, matte, metallic, chrome, silver, gold, etc.):
 - action_type = 'material'
 - Set roughness: 0.0 = very shiny/glossy, 1.0 = very matte/rough
 - Set metallic: 0.0 = plastic/dielectric, 1.0 = pure metal
-- Common presets: shiny metal (roughness=0.2, metallic=1.0), matte plastic (roughness=0.8, metallic=0.0)"""
+- IMPORTANT: For metallic materials, you MUST also set the color! Metallic materials with black color will appear black.
+
+MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and metallic):
+- Chrome: color_r=0.55, color_g=0.55, color_b=0.55, roughness=0.05, metallic=1.0
+- Silver: color_r=0.75, color_g=0.75, color_b=0.75, roughness=0.2, metallic=1.0
+- Gold: color_r=1.0, color_g=0.84, color_b=0.0, roughness=0.3, metallic=1.0
+- Copper: color_r=0.95, color_g=0.64, color_b=0.54, roughness=0.3, metallic=1.0
+- Bronze: color_r=0.8, color_g=0.5, color_b=0.2, roughness=0.4, metallic=1.0
+- Shiny plastic: color_r=0.8, color_g=0.2, color_b=0.2, roughness=0.2, metallic=0.0
+- Matte plastic: color_r=0.5, color_g=0.5, color_b=0.5, roughness=0.8, metallic=0.0"""
     
     def _execute_agent_response(self, response: 'AgentResponse') -> str:
         """Execute the agent's response and return a result message."""
@@ -980,16 +989,26 @@ For MATERIAL changes (shiny, matte, metallic, plastic):
         
         elif action == "color":
             rgba = Gf.Vec4f(response.color_r, response.color_g, response.color_b, 1.0)
+            roughness = getattr(response, 'roughness', 0.5)
+            metallic = getattr(response, 'metallic', 0.0)
             material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{response.object_name.replace(' ', '_')}")
             self._ensure_xform(stage, LOOKS_ROOT_PATH)
             material = self._get_or_create_preview_material(
                 stage, material_path, rgba,
-                roughness=getattr(response, 'roughness', 0.5),
-                metallic=getattr(response, 'metallic', 0.0)
+                roughness=roughness,
+                metallic=metallic
             )
             
+            # Bind to prim and all its mesh children (same as manual mode)
+            bound = 0
             if self._bind_material_to_prim(prim, material):
-                return f"Applied color RGB({response.color_r:.2f}, {response.color_g:.2f}, {response.color_b:.2f}) to '{response.object_name}'."
+                bound += 1
+            for mesh in self._collect_mesh_descendants(prim):
+                if self._bind_material_to_prim(mesh, material):
+                    bound += 1
+            
+            if bound > 0:
+                return f"Applied color RGB({response.color_r:.2f}, {response.color_g:.2f}, {response.color_b:.2f}) to '{response.object_name}' (rough={roughness:.2f}, metal={metallic:.2f}, {bound} prims)."
             else:
                 return f"Failed to apply color to '{response.object_name}'."
         
@@ -1003,8 +1022,16 @@ For MATERIAL changes (shiny, matte, metallic, plastic):
             self._ensure_xform(stage, LOOKS_ROOT_PATH)
             material = self._get_or_create_preview_material(stage, material_path, rgba, roughness, metallic)
             
+            # Bind to prim and all its mesh children (same as manual mode)
+            bound = 0
             if self._bind_material_to_prim(prim, material):
-                return f"Applied material (roughness={roughness:.2f}, metallic={metallic:.2f}) to '{response.object_name}'."
+                bound += 1
+            for mesh in self._collect_mesh_descendants(prim):
+                if self._bind_material_to_prim(mesh, material):
+                    bound += 1
+            
+            if bound > 0:
+                return f"Applied material (roughness={roughness:.2f}, metallic={metallic:.2f}) to '{response.object_name}' ({bound} prims)."
             else:
                 return f"Failed to apply material to '{response.object_name}'."
         
