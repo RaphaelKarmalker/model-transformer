@@ -147,9 +147,9 @@ Starting with the original USD scene - an unmodified gear assembly.
 
 ---
 
-### Step 1: Make the Big Gear Gold
+### Step 1: Change the Material of the Big Gear
 
-**Command:** *"Make the big gear gold and metallic"*
+**Command:** *"Make the big gear gold"*
 
 The LLM identifies the large gear and applies a golden metallic material.
 
@@ -159,7 +159,7 @@ The LLM identifies the large gear and applies a golden metallic material.
 
 ### Step 2: Move the Big Gear
 
-**Command:** *"Move the big gear to the right by 5 units"*
+**Command:** *"Move the big gear 10 units on the x and y axis"*
 
 The gear is translated along the X-axis.
 
@@ -167,9 +167,9 @@ The gear is translated along the X-axis.
 
 ---
 
-### Step 3: White Shaft
+### Step 3: Rotate the White Shaft
 
-**Command:** *"Make the shaft white"*
+**Command:** *"Make the shaft white and rotate it by 45 degree along the y axis"*
 
 The central shaft receives a clean white material.
 
@@ -187,9 +187,9 @@ The base plate is transformed to a vibrant blue color.
 
 ---
 
-### Step 5: White Small Gear
+### Step 5: Move White Small Gear
 
-**Command:** *"Make the small gear white"*
+**Command:** *"Make the small gear white & move it up by 5"*
 
 The smaller gear is updated to match the shaft's white appearance.
 
@@ -199,7 +199,7 @@ The smaller gear is updated to match the shaft's white appearance.
 
 ### Step 6: Memory & Compound Commands
 
-**Command:** *"Make the compound gear the same color as the big gear"*
+**Command:** *"Lift the Compund Gear by 5 Units"*
 
 The LLM remembers previous transformations and can apply consistent styling across objects.
 
@@ -210,6 +210,8 @@ The LLM remembers previous transformations and can apply consistent styling acro
 ### Final Result
 
 The scene has been completely transformed using only natural language commands - no manual parameter adjustments required!
+
+![Final Scene](Files/usage/7_manual_chrome.png)
 
 ---
 
