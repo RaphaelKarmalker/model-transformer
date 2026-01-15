@@ -135,6 +135,84 @@ The LLM provides helpful feedback when it cannot fulfill a request:
 
 ---
 
+## Example Usage: Transforming a Scene with LLM Commands
+
+This walkthrough demonstrates how to transform a 3D gear assembly using only natural language commands.
+
+### Step 0: Base Scene
+
+Starting with the original USD scene - an unmodified gear assembly.
+
+![Base Scene](Files/usage/0_base.png)
+
+---
+
+### Step 1: Make the Big Gear Gold
+
+**Command:** *"Make the big gear gold and metallic"*
+
+The LLM identifies the large gear and applies a golden metallic material.
+
+![Gold Gear](Files/usage/1_gold.png)
+
+---
+
+### Step 2: Move the Big Gear
+
+**Command:** *"Move the big gear to the right by 5 units"*
+
+The gear is translated along the X-axis.
+
+![Move Big Gear](Files/usage/2_move_big_gear.png)
+
+---
+
+### Step 3: White Shaft
+
+**Command:** *"Make the shaft white"*
+
+The central shaft receives a clean white material.
+
+![White Shaft](Files/usage/3_white_shaft.png)
+
+---
+
+### Step 4: Blue Base Plate
+
+**Command:** *"Color the base plate blue"*
+
+The base plate is transformed to a vibrant blue color.
+
+![Blue Base Plate](Files/usage/4_blue_base_plate.png)
+
+---
+
+### Step 5: White Small Gear
+
+**Command:** *"Make the small gear white"*
+
+The smaller gear is updated to match the shaft's white appearance.
+
+![White Small Gear](Files/usage/5_white_small_gear.png)
+
+---
+
+### Step 6: Memory & Compound Commands
+
+**Command:** *"Make the compound gear the same color as the big gear"*
+
+The LLM remembers previous transformations and can apply consistent styling across objects.
+
+![Compound Gear](Files/usage/6_memory_compund_gear.png)
+
+---
+
+### Final Result
+
+The scene has been completely transformed using only natural language commands - no manual parameter adjustments required!
+
+---
+
 ## Tips & Best Practices
 
 1. **Always Refresh First**: After loading a new USD file, click "Refresh" in Manual mode to populate the object list
