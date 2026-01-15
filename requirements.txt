@@ -1,0 +1,14 @@
+# Core dependencies
+pyyaml
+pydantic
+transformers
+torch
+langgraph
+
+# Acceleration & GPU support
+accelerate
+kernels
+
+# Typing & Jupyter
+typing_extensions
+ipykernel

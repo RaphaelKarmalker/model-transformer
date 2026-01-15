@@ -1,0 +1,238 @@
+{
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "timestamp": "2026-01-15T18:18:06.489021",
+  "model_load_time": 2.1879348754882812,
+  "total_tests": 10,
+  "passed": 8,
+  "failed": 2,
+  "accuracy": 0.8,
+  "total_inference_time": 17.307235956192017,
+  "average_inference_time": 1.7307235956192017,
+  "results": [
+    {
+      "test_id": 1,
+      "description": "Valid rotation on known object",
+      "prompt": "Rotate the main_shaft by 30 degrees on the x-axis.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 2.1224606037139893,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"9923411\",\n  \"object_name\": \"main_shaft\"\n}",
+          "time": 0.842599630355835
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"9923411\",\n  \"rotate_x\": \"30\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"1.0\",\n  \"status\": \"\"\n}",
+          "time": 1.2798609733581543
+        }
+      ]
+    },
+    {
+      "test_id": 2,
+      "description": "Valid zoom on known object",
+      "prompt": "Zoom in on the engine_block by a factor of 2.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 1.8885116577148438,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"3421299\",\n  \"object_name\": \"engine_block\"\n}",
+          "time": 0.6312422752380371
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"3421299\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"2.0\",\n  \"status\": \"\"\n}",
+          "time": 1.2572693824768066
+        }
+      ]
+    },
+    {
+      "test_id": 3,
+      "description": "Valid Y-axis rotation",
+      "prompt": "Rotate the left_gear 45 degrees around the y-axis.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 1.793715476989746,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\"object_id\": \"2953382\", \"object_name\": \"left_gear\"}",
+          "time": 0.5188815593719482
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"2953382\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"45\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"1.0\",\n  \"status\": \"\"\n}",
+          "time": 1.2748339176177979
+        }
+      ]
+    },
+    {
+      "test_id": 4,
+      "description": "Combined rotation and zoom",
+      "prompt": "Turn the cooling_fan 90 degrees on z-axis and zoom out to 0.5.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 1.941025733947754,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"7712934\",\n  \"object_name\": \"cooling_fan\"\n}",
+          "time": 0.6655313968658447
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"7712934\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"90\",\n  \"zoom\": \"0.5\",\n  \"status\": \"\"\n}",
+          "time": 1.2754943370819092
+        }
+      ]
+    },
+    {
+      "test_id": 5,
+      "description": "Flip is not allowed (invalid)",
+      "prompt": "Flip the main_shaft horizontally.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "invalid_action",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "invalid_action",
+      "passed": true,
+      "total_inference_time": 1.7015891075134277,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"9923411\",\n  \"object_name\": \"main_shaft\"\n}",
+          "time": 0.6482341289520264
+        },
+        {
+          "step": "transformation",
+          "response": " {\"object_id\": \"9923411\", \"rotate_x\": \"0\", \"rotate_y\": \"180\", \"rotate_z\": \"0\", \"zoom\": \"1.0\", \"status\": \"INVALID\"}",
+          "time": 1.0533549785614014
+        }
+      ]
+    },
+    {
+      "test_id": 6,
+      "description": "Mirror is not allowed (invalid)",
+      "prompt": "Mirror the engine_block along the x-axis.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "invalid_action",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "invalid_action",
+      "passed": true,
+      "total_inference_time": 1.6465463638305664,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"3421299\",\n  \"object_name\": \"engine_block\"\n}",
+          "time": 0.6288967132568359
+        },
+        {
+          "step": "transformation",
+          "response": " {\"object_id\": \"3421299\", \"rotate_x\": \"0\", \"rotate_y\": \"0\", \"rotate_z\": \"0\", \"zoom\": \"1.0\", \"status\": \"INVALID\"}",
+          "time": 1.0176496505737305
+        }
+      ]
+    },
+    {
+      "test_id": 7,
+      "description": "Move/translate is not allowed",
+      "prompt": "Move the left_gear 10 units to the right.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "invalid_action",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "invalid_action",
+      "passed": true,
+      "total_inference_time": 1.941718578338623,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"2953382\",\n  \"object_name\": \"left_gear\"\n}",
+          "time": 0.6470687389373779
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"2953382\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"1.0\",\n  \"status\": \"INVALID\"\n}",
+          "time": 1.2946498394012451
+        }
+      ]
+    },
+    {
+      "test_id": 8,
+      "description": "Object not in catalog",
+      "prompt": "Rotate the banana by 45 degrees.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "unknown_object",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "unknown_object",
+      "passed": true,
+      "total_inference_time": 0.4635004997253418,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"\",\n  \"object_name\": \"banana\"\n}",
+          "time": 0.4635004997253418
+        }
+      ]
+    },
+    {
+      "test_id": 9,
+      "description": "Unknown object",
+      "prompt": "Zoom in on the spaceship.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "unknown_object",
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": false,
+      "total_inference_time": 1.8672592639923096,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"rear_left_wheel\",\n  \"object_name\": \"rear left wheel\"\n}",
+          "time": 0.6289060115814209
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"rear_left_wheel\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"2.0\",\n  \"status\": \"\"\n}",
+          "time": 1.2383532524108887
+        }
+      ]
+    },
+    {
+      "test_id": 10,
+      "description": "Multiple wheels exist - ambiguous",
+      "prompt": "Rotate the wheel by 30 degrees.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "ambiguous",
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": false,
+      "total_inference_time": 1.940908670425415,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": " {\n  \"object_id\": \"1844231\",\n  \"object_name\": \"front_left_wheel\"\n}",
+          "time": 0.6658518314361572
+        },
+        {
+          "step": "transformation",
+          "response": " {\n  \"object_id\": \"1844231\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"30\",\n  \"zoom\": \"1.0\",\n  \"status\": \"\"\n}",
+          "time": 1.2750568389892578
+        }
+      ]
+    }
+  ]
+}
