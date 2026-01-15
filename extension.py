@@ -15,7 +15,9 @@ import json
 import os
 import re
 import threading
+import traceback
 from collections import deque
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple, TypedDict, Union, Type, TypeVar
 
 import omni.ext
@@ -24,19 +26,18 @@ import omni.usd
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
-# Pydantic and LangGraph imports (lazy loaded)
-try:
-    import yaml
-    from pydantic import BaseModel, Field, ValidationError
-    from langgraph.graph import StateGraph, END
-    from transformers import pipeline
-    AGENT_AVAILABLE = True
-except ImportError as e:
-    print(f"[WARNING] Agent dependencies not available: {e}")
-    AGENT_AVAILABLE = False
+# Global flags - will be set in on_startup
+AGENT_AVAILABLE = False
+yaml = None
+BaseModel = None
+Field = None
+ValidationError = None
+StateGraph = None
+END = None
+pipeline = None
 
 
-T = TypeVar('T', bound='BaseModel')
+T = TypeVar('T', bound=object)
 
 
 # --------------------------
@@ -74,16 +75,28 @@ DEFAULT_OBJECT_TABLE = {
 
 
 # --------------------------
-# Pydantic Models (if available)
+# Pydantic Models (lazy loaded)
 # --------------------------
 
-if AGENT_AVAILABLE:
-    class ObjectMatch(BaseModel):
+# These will be created dynamically when AGENT_AVAILABLE is True
+ObjectMatch = None
+ModelTransformation = None
+ColorChange = None
+AgentResponse = None
+
+def _create_pydantic_models():
+    """Create Pydantic models after dependencies are loaded."""
+    global ObjectMatch, ModelTransformation, ColorChange, AgentResponse
+    
+    if not AGENT_AVAILABLE or BaseModel is None:
+        return
+    
+    class _ObjectMatch(BaseModel):
         """Result from object identification."""
         object_id: str = Field(description="The USD path of the object, or empty string if not found, or 'MULTI' if ambiguous")
         object_name: str = Field(description="The name of the object, or empty string if not found, or 'MULTI' if ambiguous")
 
-    class ModelTransformation(BaseModel):
+    class _ModelTransformation(BaseModel):
         """Represents a valid 3D model transformation."""
         object_id: str = Field(description="The USD path of the object to transform")
         rotate_x: float = Field(default=0.0, description="Rotation around X-axis in degrees")
@@ -94,14 +107,14 @@ if AGENT_AVAILABLE:
         translate_z: float = Field(default=0.0, description="Translation on Z-axis")
         zoom: float = Field(default=1.0, description="Scale factor (1.0 = no change)")
 
-    class ColorChange(BaseModel):
+    class _ColorChange(BaseModel):
         """Represents a color change request."""
         object_id: str = Field(description="The USD path of the object")
         color_r: float = Field(default=1.0, description="Red component (0-1)")
         color_g: float = Field(default=1.0, description="Green component (0-1)")
         color_b: float = Field(default=1.0, description="Blue component (0-1)")
 
-    class AgentResponse(BaseModel):
+    class _AgentResponse(BaseModel):
         """Union response from agent - determines action type."""
         action_type: str = Field(description="Type of action: 'transform', 'color', 'unknown', 'ambiguous', 'invalid'")
         object_id: str = Field(default="", description="USD path of object")
@@ -123,6 +136,12 @@ if AGENT_AVAILABLE:
         metallic: float = Field(default=0.0, description="Metallic appearance (0=dielectric, 1=metal)")
         # Error info
         error_message: str = Field(default="", description="Error message if action failed")
+    
+    ObjectMatch = _ObjectMatch
+    ModelTransformation = _ModelTransformation
+    ColorChange = _ColorChange
+    AgentResponse = _AgentResponse
+    # removed debug
 
 
 # --------------------------
@@ -211,7 +230,8 @@ class AgentManager:
         # First try code blocks
         code_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
         if code_block_match:
-            return code_block_match.group(1)
+            json_str = code_block_match.group(1)
+            return self._fix_json_quotes(json_str)
         
         # Find matching braces
         start_idx = text.find('{')
@@ -231,9 +251,56 @@ class AgentManager:
                     break
         
         if brace_count == 0:
-            return text[start_idx:end_idx + 1]
+            json_str = text[start_idx:end_idx + 1]
+            return self._fix_json_quotes(json_str)
         
         return ""
+    
+    def _fix_json_quotes(self, json_str: str) -> str:
+        """Fix common JSON issues like single quotes, trailing commas."""
+        # Replace single quotes with double quotes (but not inside strings)
+        # This is a simple fix - handles most common cases
+        result = []
+        in_string = False
+        escape_next = False
+        string_char = None
+        
+        for i, char in enumerate(json_str):
+            if escape_next:
+                result.append(char)
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                result.append(char)
+                escape_next = True
+                continue
+            
+            if char in '"\'':
+                if not in_string:
+                    in_string = True
+                    string_char = char
+                    result.append('"')  # Always use double quotes
+                elif char == string_char:
+                    in_string = False
+                    string_char = None
+                    result.append('"')  # Always use double quotes
+                else:
+                    result.append(char)
+            else:
+                result.append(char)
+        
+        fixed = ''.join(result)
+        
+        # Remove trailing commas before } or ]
+        fixed = re.sub(r',\s*([}\]])', r'\1', fixed)
+        
+        # Fix True/False/None to JSON booleans
+        fixed = re.sub(r'\bTrue\b', 'true', fixed)
+        fixed = re.sub(r'\bFalse\b', 'false', fixed)
+        fixed = re.sub(r'\bNone\b', 'null', fixed)
+        
+        return fixed
     
     def generate_structured_output(
         self,
@@ -294,12 +361,18 @@ class AgentManager:
         
         for attempt in range(max_retries):
             try:
+                import time
+                start_time = time.time()
+                print(f"[INFO] LLM inference starting (attempt {attempt + 1}/{max_retries})...")
+                
                 outputs = self._pipe(
                     messages,
                     max_new_tokens=max_tokens,
-                    temperature=0.0,
                     do_sample=False,
                 )
+                
+                elapsed = time.time() - start_time
+                print(f"[INFO] LLM inference completed in {elapsed:.2f}s")
                 
                 generated_text = outputs[0]["generated_text"]
                 if isinstance(generated_text, list):
@@ -307,12 +380,19 @@ class AgentManager:
                 else:
                     response_text = str(generated_text)
                 
+                # Debug: show raw response
+                print(f"[DEBUG] Raw LLM response (first 500 chars): {response_text[:500]}")
+                
                 json_text = self.extract_json_from_text(response_text)
                 
                 if not json_text:
+                    print(f"[DEBUG] No JSON found in response")
                     raise json.JSONDecodeError("No JSON object found", response_text, 0)
                 
+                print(f"[DEBUG] Extracted JSON: {json_text[:300]}")
+                
                 data = json.loads(json_text)
+                print(f"[DEBUG] Parsed data: {data}")
                 return response_model.model_validate(data)
                 
             except (json.JSONDecodeError, ValidationError) as e:
@@ -321,7 +401,7 @@ class AgentManager:
                     raise ValueError(f"Failed to generate valid {response_model.__name__} after {max_retries} attempts")
                 if response_text:
                     messages.append({"role": "assistant", "content": response_text})
-                    messages.append({"role": "user", "content": f"Invalid response. Return ONLY JSON: {example_json}"})
+                    messages.append({"role": "user", "content": f"Invalid JSON. Return ONLY valid JSON with double quotes: {example_json}"})
 
 
 # --------------------------
@@ -334,51 +414,119 @@ class GenerativeModelingExtension(omni.ext.IExt):
     """
     
     def on_startup(self, ext_id: str) -> None:
-        print("[GenerativeModeling] Extension starting up...")
+        global AGENT_AVAILABLE, yaml, BaseModel, Field, ValidationError, StateGraph, END, pipeline
         
-        self._window: Optional[ui.Window] = None
-        self._status_label: Optional[ui.Label] = None
-        
-        # UI models
-        self._keyword_model: Optional[ui.SimpleStringModel] = None
-        self._dx_model: Optional[ui.SimpleFloatModel] = None
-        self._dy_model: Optional[ui.SimpleFloatModel] = None
-        self._dz_model: Optional[ui.SimpleFloatModel] = None
-        self._rx_model: Optional[ui.SimpleFloatModel] = None
-        self._ry_model: Optional[ui.SimpleFloatModel] = None
-        self._rz_model: Optional[ui.SimpleFloatModel] = None
-        
-        # Material UI models
-        self._roughness_model: Optional[ui.SimpleFloatModel] = None
-        self._metallic_model: Optional[ui.SimpleFloatModel] = None
-        self._color_r_model: Optional[ui.SimpleFloatModel] = None
-        self._color_g_model: Optional[ui.SimpleFloatModel] = None
-        self._color_b_model: Optional[ui.SimpleFloatModel] = None
-        
-        # Object selection
-        self._object_combo: Optional[ui.ComboBox] = None
-        self._object_combo_model: Optional[ui.SimpleIntModel] = None
-        self._object_names_list: List[str] = []
-        
-        # Chat UI
-        self._chat_input_model: Optional[ui.SimpleStringModel] = None
-        self._chat_container: Optional[ui.VStack] = None
-        self._chat_scroll: Optional[ui.ScrollingFrame] = None
-        
-        # Agent
-        self._agent_manager: Optional[AgentManager] = None
-        self._object_table: Dict[str, str] = DEFAULT_OBJECT_TABLE.copy()
-        
-        # Chat memory: stores last 3 turns (6 messages: 3 user + 3 assistant)
-        self._chat_history: deque = deque(maxlen=6)
-        
-        # Mode: 0 = Static Menu, 1 = Chat
-        self._mode_index = ui.SimpleIntModel(0)
-        
-        self._build_ui()
+        # removed debug
+        try:
+            print("[GenerativeModeling] Extension starting up...")
+            
+            # Lazy load external dependencies
+            # removed debug
+            try:
+                # removed debug
+                import yaml as _yaml
+                # removed debug
+                from pydantic import BaseModel as _BaseModel, Field as _Field, ValidationError as _ValidationError
+                # removed debug
+                from langgraph.graph import StateGraph as _StateGraph, END as _END
+                # removed debug
+                from transformers import pipeline as _pipeline
+                
+                yaml = _yaml
+                BaseModel = _BaseModel
+                Field = _Field
+                ValidationError = _ValidationError
+                StateGraph = _StateGraph
+                END = _END
+                pipeline = _pipeline
+                AGENT_AVAILABLE = True
+                # removed debug
+                
+                # Create Pydantic models now that dependencies are loaded
+                _create_pydantic_models()
+                
+            except Exception as e:
+                # removed
+                import traceback as tb
+                # removed
+                AGENT_AVAILABLE = False
+            
+            self._window: Optional[ui.Window] = None
+            self._status_label: Optional[ui.Label] = None
+            
+            # UI models
+            self._keyword_model: Optional[ui.SimpleStringModel] = None
+            self._dx_model: Optional[ui.SimpleFloatModel] = None
+            self._dy_model: Optional[ui.SimpleFloatModel] = None
+            self._dz_model: Optional[ui.SimpleFloatModel] = None
+            self._rx_model: Optional[ui.SimpleFloatModel] = None
+            self._ry_model: Optional[ui.SimpleFloatModel] = None
+            self._rz_model: Optional[ui.SimpleFloatModel] = None
+            
+            # Material UI models
+            self._roughness_model: Optional[ui.SimpleFloatModel] = None
+            self._metallic_model: Optional[ui.SimpleFloatModel] = None
+            self._color_r_model: Optional[ui.SimpleFloatModel] = None
+            self._color_g_model: Optional[ui.SimpleFloatModel] = None
+            self._color_b_model: Optional[ui.SimpleFloatModel] = None
+            
+            # Object selection
+            self._object_combo: Optional[ui.ComboBox] = None
+            self._object_combo_model: Optional[ui.SimpleIntModel] = None
+            self._object_names_list: List[str] = []
+            
+            # Chat UI
+            self._chat_input_model: Optional[ui.SimpleStringModel] = None
+            self._chat_container: Optional[ui.VStack] = None
+            self._chat_scroll: Optional[ui.ScrollingFrame] = None
+            
+            # Agent
+            self._agent_manager: Optional[AgentManager] = None
+            self._object_table: Dict[str, str] = DEFAULT_OBJECT_TABLE.copy()
+            
+            # Chat memory: stores last 3 turns (6 messages: 3 user + 3 assistant)
+            self._chat_history: deque = deque(maxlen=6)
+            
+            # Pending response for main thread execution
+            self._pending_response = None
+            self._pending_user_message = None
+            self._update_sub = None  # Subscription for main thread callbacks
+            
+            # Mode: 0 = Static Menu, 1 = Chat
+            self._mode_index = ui.SimpleIntModel(0)
+            
+            # Try to load objects from USD stage
+            try:
+                stage = omni.usd.get_context().get_stage()
+                if stage:
+                    self._object_table = self._discover_scene_objects(stage)
+                    print(f"[GenerativeModeling] Found {len(self._object_table)} objects from USD")
+                else:
+                    print("[GenerativeModeling] No USD stage loaded, using default objects")
+            except Exception as e:
+                print(f"[GenerativeModeling] Error discovering objects: {e}")
+            
+            self._build_ui()
+            print("[GenerativeModeling] Extension startup complete!")
+            
+            # Show agent status
+            if AGENT_AVAILABLE:
+                print("[GenerativeModeling] Agent is available! LLM features enabled.")
+            else:
+                print("[GenerativeModeling] Agent NOT available - LLM features disabled")
+            
+        except Exception as e:
+            print(f"[GenerativeModeling] FATAL ERROR during startup: {e}")
+            print(traceback.format_exc())
+            raise
         
     def on_shutdown(self) -> None:
         print("[GenerativeModeling] Extension shutting down...")
+        
+        # Clean up update subscription
+        if self._update_sub:
+            self._update_sub = None
+        
         if self._window:
             self._window.visible = False
             self._window = None
@@ -388,218 +536,204 @@ class GenerativeModelingExtension(omni.ext.IExt):
     # --------------------------
     
     def _build_ui(self) -> None:
-        self._window = ui.Window("Generative Modeling", width=650, height=600, visible=True)
+        print("[GenerativeModeling] Creating main window...")
+        
+        # Clean professional dark theme
+        self._style = {
+            "Window": {"background_color": 0xFF1E1E1E},
+            "Label": {"color": 0xFFBBBBBB, "font_size": 11},
+            "Label::section": {"color": 0xFF888888, "font_size": 10},
+            "Button": {"background_color": 0xFF383838, "border_radius": 2},
+            "Button:hovered": {"background_color": 0xFF484848},
+            "Button::primary": {"background_color": 0xFF3D6E99},
+            "FloatField": {"background_color": 0xFF2A2A2A, "border_radius": 2},
+            "StringField": {"background_color": 0xFF2A2A2A, "border_radius": 2},
+            "ScrollingFrame": {"background_color": 0xFF252525},
+        }
+        
+        self._window = ui.Window("Generative Modeling", width=450, height=420, visible=True)
+        self._window.frame.set_style(self._style)
         
         with self._window.frame:
-            with ui.VStack(spacing=6):
-                # Mode selector
-                ui.Label("Mode:", height=20)
-                with ui.HStack(height=30, spacing=10):
-                    ui.RadioButton(
-                        text="Static Menu",
-                        radio_collection=self._mode_index,
-                        width=120
-                    )
-                    ui.RadioButton(
-                        text="Chat (LLM)",
-                        radio_collection=self._mode_index,
-                        width=120
-                    )
-                    ui.Button("Refresh Objects from USD", clicked_fn=self._on_refresh_objects, width=180)
+            with ui.VStack(spacing=0):
+                # Tab bar
+                with ui.HStack(height=22, spacing=0):
+                    self._static_mode_btn = ui.Button("Manual", clicked_fn=lambda: self._set_mode(0),
+                        style={"background_color": 0xFF3D6E99, "border_radius": 0})
+                    self._chat_mode_btn = ui.Button("Chat", clicked_fn=lambda: self._set_mode(1),
+                        style={"background_color": 0xFF2A2A2A, "border_radius": 0})
+                    ui.Spacer()
                 
-                ui.Separator(height=8)
-                
-                # Stack for mode-specific content
+                # Content area
                 with ui.ZStack():
-                    # Static Menu Mode
                     self._static_frame = ui.Frame(visible=True)
                     with self._static_frame:
                         self._build_static_menu()
                     
-                    # Chat Mode
                     self._chat_frame = ui.Frame(visible=False)
                     with self._chat_frame:
                         self._build_chat_ui()
                 
-                # Status label at bottom
-                ui.Separator(height=4)
-                self._status_label = ui.Label("Ready", height=40, word_wrap=True)
-        
-        # Mode change callback
-        self._mode_index.add_value_changed_fn(self._on_mode_changed)
+                # Status bar
+                with ui.HStack(height=18, style={"margin": 2}):
+                    self._status_label = ui.Label("Ready", style={"color": 0xFF666666, "font_size": 10})
+    
+    def _set_mode(self, mode: int) -> None:
+        """Switch between Static Menu (0) and Chat (1) mode."""
+        self._mode_index.set_value(mode)
+        self._on_mode_changed(None)
+        if mode == 0:
+            self._static_mode_btn.set_style({"background_color": 0xFF3D6E99, "border_radius": 0})
+            self._chat_mode_btn.set_style({"background_color": 0xFF2A2A2A, "border_radius": 0})
+        else:
+            self._static_mode_btn.set_style({"background_color": 0xFF2A2A2A, "border_radius": 0})
+            self._chat_mode_btn.set_style({"background_color": 0xFF3D6E99, "border_radius": 0})
     
     def _build_static_menu(self) -> None:
-        """Build the static menu UI (no LLM)."""
-        with ui.VStack(spacing=6):
-            # Object Selection Section
-            ui.Label("Select Object:", height=18, style={"font_size": 14})
-            with ui.HStack(height=28, spacing=8):
-                self._object_combo_model = ui.SimpleIntModel(0)
-                self._object_names_list = list(self._object_table.keys())
-                self._object_combo = ui.ComboBox(
-                    self._object_combo_model, 
-                    *self._object_names_list,
-                    width=300
-                )
-                ui.Button("↻ Refresh", clicked_fn=self._on_refresh_objects_and_combo, width=80)
+        """Build the static menu UI - compact and professional."""
+        with ui.VStack(spacing=6, style={"margin": 6}):
             
-            ui.Separator(height=8)
+            # --- OBJECT SELECTION ---
+            ui.Label("Object Selection", name="section")
+            with ui.HStack(height=22, spacing=4):
+                self._manual_path_model = ui.SimpleStringModel(
+                    list(self._object_table.values())[0] if self._object_table else "/World/")
+                ui.StringField(self._manual_path_model)
+                ui.Button("Refresh", clicked_fn=self._on_refresh_objects_and_combo, width=50)
             
-            # === MATERIAL SECTION ===
-            ui.Label("Material Properties:", height=18, style={"font_size": 14})
+            # Object list
+            self._object_names_list = list(self._object_table.keys()) if self._object_table else []
+            self._object_paths_list = list(self._object_table.values()) if self._object_table else []
+            with ui.ScrollingFrame(height=55, style={"background_color": 0xFF252525}):
+                self._object_list_container = ui.VStack(spacing=1)
+                self._rebuild_object_buttons()
             
-            # Color RGB
-            with ui.HStack(height=28, spacing=6):
-                ui.Label("Color:", width=50)
-                ui.Label("R", width=15)
+            # --- MATERIAL ---
+            ui.Label("Material", name="section")
+            with ui.HStack(height=22, spacing=4):
+                ui.Label("R", width=12)
                 self._color_r_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._color_r_model, width=60)
-                ui.Label("G", width=15)
+                ui.FloatField(self._color_r_model, width=38)
+                ui.Label("G", width=12)
                 self._color_g_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._color_g_model, width=60)
-                ui.Label("B", width=15)
+                ui.FloatField(self._color_g_model, width=38)
+                ui.Label("B", width=12)
                 self._color_b_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._color_b_model, width=60)
-            
-            # Roughness & Metallic
-            with ui.HStack(height=28, spacing=6):
-                ui.Label("Roughness:", width=70)
+                ui.FloatField(self._color_b_model, width=38)
+                ui.Spacer(width=6)
+                ui.Label("Roughness", width=55)
                 self._roughness_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._roughness_model, width=60)
-                ui.Label("(0=shiny, 1=matte)", width=100, style={"color": 0xFF888888})
-                
-                ui.Label("Metallic:", width=55)
+                ui.FloatField(self._roughness_model, width=38)
+                ui.Label("Metallic", width=45)
                 self._metallic_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._metallic_model, width=60)
-                ui.Label("(0-1)", width=40, style={"color": 0xFF888888})
+                ui.FloatField(self._metallic_model, width=38)
             
-            with ui.HStack(height=30, spacing=8):
-                ui.Button("Apply Material", clicked_fn=self._on_apply_material_clicked, width=120)
-                ui.Button("Reset Material", clicked_fn=self._on_reset_material_clicked, width=120)
+            with ui.HStack(height=22, spacing=4):
+                ui.Button("Apply Material", clicked_fn=self._on_apply_material_clicked, width=85, name="primary")
+                ui.Button("Reset", clicked_fn=self._on_reset_material_clicked, width=50)
             
-            # Quick color presets
-            ui.Label("Quick Colors:", height=16, style={"color": 0xFF888888})
-            with ui.HStack(height=26, spacing=4):
-                ui.Button("Red", clicked_fn=lambda: self._set_quick_color(1,0,0), width=50)
-                ui.Button("Green", clicked_fn=lambda: self._set_quick_color(0,1,0), width=50)
-                ui.Button("Blue", clicked_fn=lambda: self._set_quick_color(0,0,1), width=50)
-                ui.Button("Yellow", clicked_fn=lambda: self._set_quick_color(1,1,0), width=50)
-                ui.Button("Metal", clicked_fn=lambda: self._set_quick_material(0.7,0.7,0.7,0.2,1.0), width=50)
-                ui.Button("Plastic", clicked_fn=lambda: self._set_quick_material(0.8,0.2,0.2,0.4,0.0), width=55)
+            # Presets
+            with ui.HStack(height=20, spacing=2):
+                ui.Button("Gold", clicked_fn=lambda: self._set_quick_material(1.0, 0.84, 0.0, 0.3, 1.0), width=36)
+                ui.Button("Silver", clicked_fn=lambda: self._set_quick_material(0.75, 0.75, 0.75, 0.2, 1.0), width=40)
+                ui.Button("Chrome", clicked_fn=lambda: self._set_quick_material(0.55, 0.55, 0.55, 0.05, 1.0), width=46)
+                ui.Button("Plastic", clicked_fn=lambda: self._set_quick_material(0.8, 0.2, 0.2, 0.4, 0.0), width=44)
+                ui.Button("Glass", clicked_fn=lambda: self._set_quick_material(0.9, 0.95, 1.0, 0.0, 0.0), width=38)
+                ui.Button("Red", clicked_fn=lambda: self._set_quick_color(1,0,0), width=30)
+                ui.Button("Green", clicked_fn=lambda: self._set_quick_color(0,1,0), width=40)
+                ui.Button("Blue", clicked_fn=lambda: self._set_quick_color(0,0,1), width=34)
             
-            ui.Separator(height=8)
-            
-            # === TRANSFORM SECTION ===
-            ui.Label("Transform:", height=18, style={"font_size": 14})
-            
-            # Translation
-            ui.Label("Translate (dx, dy, dz):", height=16)
-            with ui.HStack(height=28, spacing=6):
-                ui.Label("dx", width=20)
+            # --- TRANSFORM ---
+            ui.Label("Transform", name="section")
+            with ui.HStack(height=22, spacing=4):
+                ui.Label("Translate", width=52)
+                ui.Label("X", width=10)
                 self._dx_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._dx_model, width=70)
-                
-                ui.Label("dy", width=20)
+                ui.FloatField(self._dx_model, width=45)
+                ui.Label("Y", width=10)
                 self._dy_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._dy_model, width=70)
-                
-                ui.Label("dz", width=20)
+                ui.FloatField(self._dy_model, width=45)
+                ui.Label("Z", width=10)
                 self._dz_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._dz_model, width=70)
-                
-                ui.Button("Translate", clicked_fn=self._on_translate_object_clicked, width=80)
+                ui.FloatField(self._dz_model, width=45)
+                ui.Button("Apply", clicked_fn=self._on_translate_object_clicked, width=45, name="primary")
             
-            # Rotation
-            ui.Label("Rotate (rx, ry, rz) in degrees:", height=16)
-            with ui.HStack(height=28, spacing=6):
-                ui.Label("rx", width=20)
+            with ui.HStack(height=22, spacing=4):
+                ui.Label("Rotate", width=52)
+                ui.Label("X", width=10)
                 self._rx_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._rx_model, width=70)
-                
-                ui.Label("ry", width=20)
+                ui.FloatField(self._rx_model, width=45)
+                ui.Label("Y", width=10)
                 self._ry_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._ry_model, width=70)
-                
-                ui.Label("rz", width=20)
+                ui.FloatField(self._ry_model, width=45)
+                ui.Label("Z", width=10)
                 self._rz_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._rz_model, width=70)
-                
-                ui.Button("Rotate", clicked_fn=self._on_rotate_object_clicked, width=80)
+                ui.FloatField(self._rz_model, width=45)
+                ui.Button("Apply", clicked_fn=self._on_rotate_object_clicked, width=45, name="primary")
             
-            # Quick rotation presets
-            ui.Label("Quick Rotations:", height=16, style={"color": 0xFF888888})
-            with ui.HStack(height=26, spacing=4):
-                ui.Button("+90° X", clicked_fn=lambda: self._quick_rotate(90,0,0), width=55)
-                ui.Button("+90° Y", clicked_fn=lambda: self._quick_rotate(0,90,0), width=55)
-                ui.Button("+90° Z", clicked_fn=lambda: self._quick_rotate(0,0,90), width=55)
-                ui.Button("Reset Rot", clicked_fn=self._on_reset_rotation_clicked, width=70)
+            with ui.HStack(height=20, spacing=3):
+                ui.Button("+90° X", clicked_fn=lambda: self._quick_rotate(90,0,0), width=45)
+                ui.Button("+90° Y", clicked_fn=lambda: self._quick_rotate(0,90,0), width=45)
+                ui.Button("+90° Z", clicked_fn=lambda: self._quick_rotate(0,0,90), width=45)
+                ui.Button("Reset Rotation", clicked_fn=self._on_reset_rotation_clicked, width=80)
             
-            ui.Separator(height=8)
-            
-            # === LEGACY KEYWORD MODE ===
-            with ui.CollapsableFrame("Legacy: Keyword-based Operations", collapsed=True, height=0):
-                with ui.VStack(spacing=4):
-                    ui.Label("Keywords: compound / small / big / red / yellow", height=16, 
-                             style={"color": 0xFF888888})
+            # Legacy (hidden)
+            self._legacy_visible = False
+            self._legacy_frame = ui.Frame(visible=False)
+            with self._legacy_frame:
+                with ui.VStack(spacing=2):
                     self._keyword_model = ui.SimpleStringModel("compound")
-                    ui.StringField(self._keyword_model, height=24)
-                    with ui.HStack(height=26, spacing=6):
-                        ui.Button("Apply Color (Keyword)", clicked_fn=self._on_apply_color_clicked)
-                        ui.Button("Translate (Keyword)", clicked_fn=self._on_translate_clicked)
-                        ui.Button("Rotate (Keyword)", clicked_fn=self._on_rotate_clicked)
+                    ui.StringField(self._keyword_model, height=20)
+                    with ui.HStack(height=20, spacing=3):
+                        ui.Button("Apply Color", clicked_fn=self._on_apply_color_clicked, width=65)
+                        ui.Button("Translate", clicked_fn=self._on_translate_clicked, width=60)
+                        ui.Button("Rotate", clicked_fn=self._on_rotate_clicked, width=50)
     
     def _build_chat_ui(self) -> None:
-        """Build the chat interface UI."""
-        with ui.VStack(spacing=6):
-            # Agent status
-            agent_status = "Available" if AGENT_AVAILABLE else "Not Available (missing dependencies)"
-            ui.Label(f"Agent Status: {agent_status}", height=18,
-                     style={"color": 0xFF00FF00 if AGENT_AVAILABLE else 0xFFFF0000})
+        """Build the chat interface UI - professional."""
+        with ui.VStack(spacing=4, style={"margin": 6}):
+            # Status + Load
+            with ui.HStack(height=22, spacing=6):
+                agent_status = "Ready" if AGENT_AVAILABLE else "Not Available"
+                status_color = 0xFF66BB66 if AGENT_AVAILABLE else 0xFFBB6666
+                ui.Label("Agent Status:", width=75)
+                ui.Label(agent_status, style={"color": status_color})
+                ui.Spacer()
+                if AGENT_AVAILABLE:
+                    ui.Button("Load Model", clicked_fn=self._on_load_model, width=75, name="primary")
             
-            if AGENT_AVAILABLE:
-                ui.Button("Load LLM Model", clicked_fn=self._on_load_model, height=30)
-            
-            ui.Separator(height=4)
-            
-            # Chat history (scrollable)
-            ui.Label("Chat History:", height=18)
+            # Chat area
             self._chat_scroll = ui.ScrollingFrame(
-                height=280,
+                height=180,
                 horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
                 vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED
             )
             with self._chat_scroll:
-                self._chat_container = ui.VStack(spacing=4)
+                self._chat_container = ui.VStack(spacing=2)
                 with self._chat_container:
-                    ui.Label("Chat messages will appear here...", 
-                             style={"color": 0xFF888888})
+                    ui.Label("Messages will appear here...", style={"color": 0xFF555555})
             
-            ui.Separator(height=4)
-            
-            # Example commands
-            ui.Label("Example Commands:", height=16, style={"color": 0xFF888888})
-            with ui.HStack(height=24, spacing=4):
-                ui.Button("Rotate gear 45°", clicked_fn=lambda: self._insert_example("Rotate the left_gear by 45 degrees on the Z axis"), width=110)
-                ui.Button("Make red", clicked_fn=lambda: self._insert_example("Make the main_shaft red"), width=75)
-                ui.Button("Scale 2x", clicked_fn=lambda: self._insert_example("Scale the engine_block to 2x size"), width=70)
-                ui.Button("Shiny metal", clicked_fn=lambda: self._insert_example("Make the right_gear look like shiny metal"), width=85)
-            
-            ui.Separator(height=4)
-            
-            # Input area
-            ui.Label("Your message:", height=18)
-            with ui.HStack(height=50, spacing=8):
+            # Input
+            with ui.HStack(height=32, spacing=4):
                 self._chat_input_model = ui.SimpleStringModel("")
-                ui.StringField(self._chat_input_model, height=45, multiline=True)
-                ui.Button("Send", clicked_fn=self._on_send_chat, width=80, height=45)
+                ui.StringField(self._chat_input_model, height=30, multiline=True)
+                ui.Button("Send", clicked_fn=self._on_send_chat, width=50, height=30, name="primary")
             
-            with ui.HStack(height=26, spacing=8):
-                ui.Button("Clear Chat History", clicked_fn=self._on_clear_chat, width=140)
-                ui.Button("Show Objects", clicked_fn=self._on_show_objects_in_chat, width=100)
+            with ui.HStack(height=20, spacing=3):
+                ui.Button("Rotate 45°", clicked_fn=lambda: self._insert_example("Rotate the gear by 45 degrees"), width=60)
+                ui.Button("Make Red", clicked_fn=lambda: self._insert_example("Make it red"), width=55)
+                ui.Button("Shiny Metal", clicked_fn=lambda: self._insert_example("Make it shiny metal"), width=70)
+                ui.Button("Clear Chat", clicked_fn=self._on_clear_chat, width=60)
+                ui.Button("List Objects", clicked_fn=self._on_show_objects_in_chat, width=70)
     
     def _on_mode_changed(self, model) -> None:
         """Handle mode switch between Static and Chat."""
-        mode = model.as_int
+        # Get mode from _mode_index since model might be None (when called from _set_mode)
+        if model is not None:
+            mode = model.as_int
+        else:
+            mode = self._mode_index.as_int
+        
         if mode == 0:
             self._static_frame.visible = True
             self._chat_frame.visible = False
@@ -671,6 +805,11 @@ class GenerativeModelingExtension(omni.ext.IExt):
     def _process_chat_message(self, user_message: str) -> None:
         """Process the chat message through the LLM agent."""
         try:
+            import time
+            start_time = time.time()
+            # removed debug
+            print(f"[INFO] Processing chat message...")
+            
             # Build the system prompt
             system_prompt = self._build_agent_system_prompt()
             
@@ -680,16 +819,58 @@ class GenerativeModelingExtension(omni.ext.IExt):
             # Convert deque to list for the conversation history
             history_list = list(self._chat_history)
             
+            # removed
+            print(f"[INFO] Calling LLM with {len(self._object_table)} objects...")
+            
             # Generate structured response
             response = self._agent_manager.generate_structured_output(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 response_model=AgentResponse,
                 conversation_history=history_list,
-                max_tokens=512
+                max_tokens=256  # Reduced from 512 for faster response
             )
             
-            # Process the response
+            elapsed = time.time() - start_time
+            # removed debug
+            print(f"[INFO] Got response in {elapsed:.2f}s: action={response.action_type}")
+            
+            # Store response for main thread execution
+            self._pending_response = response
+            self._pending_user_message = user_message
+            
+            # Subscribe to update events to execute on main thread
+            if self._update_sub is None:
+                import omni.kit.app
+                self._update_sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
+                    self._on_update_execute_pending,
+                    name="GenerativeModeling_PendingExecution"
+                )
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"Error: {str(e)}"
+            # removed debug
+            # removed
+            print(f"[ERROR] Chat failed: {error_msg}")
+            self._add_chat_message("Agent", error_msg, is_user=False)
+            self._set_status(error_msg)
+    
+    def _on_update_execute_pending(self, event) -> None:
+        """Called on main thread update - execute pending response if any."""
+        if self._pending_response is None:
+            return
+        
+        try:
+            response = self._pending_response
+            user_message = self._pending_user_message
+            self._pending_response = None
+            self._pending_user_message = None
+            
+            # removed debug
+            print(f"[INFO] Executing pending response on main thread: {response.action_type}")
+            
+            # Process the response (USD operations happen here, on main thread)
             result_message = self._execute_agent_response(response)
             
             # Update chat history (memory)
@@ -701,10 +882,14 @@ class GenerativeModelingExtension(omni.ext.IExt):
             self._set_status("Done.")
             
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
+            import traceback
+            error_msg = f"Error executing response: {str(e)}"
+            # removed debug
+            # removed
+            print(f"[ERROR] Execute failed: {error_msg}")
             self._add_chat_message("Agent", error_msg, is_user=False)
             self._set_status(error_msg)
-    
+
     def _build_agent_system_prompt(self) -> str:
         """Build the system prompt for the agent."""
         return """You are a 3D modeling assistant for Isaac Sim. Analyze user requests and determine the appropriate action.
@@ -738,6 +923,8 @@ For MATERIAL changes (shiny, matte, metallic, plastic):
     def _execute_agent_response(self, response: 'AgentResponse') -> str:
         """Execute the agent's response and return a result message."""
         action = response.action_type.lower()
+        # removed debug
+        print(f"[INFO] Executing action: {action} for object: {response.object_name}")
         
         if action == "unknown":
             return f"Object not found. {response.error_message or 'Please specify a valid object from the scene.'}"
@@ -824,16 +1011,32 @@ For MATERIAL changes (shiny, matte, metallic, plastic):
         return "Unknown action type."
     
     def _add_chat_message(self, sender: str, message: str, is_user: bool = True) -> None:
-        """Add a message to the chat UI."""
-        if not self._chat_container:
-            return
+        """Add a message to the chat UI (thread-safe)."""
+        def _add_to_ui():
+            if not self._chat_container:
+                return
+            
+            color = 0xFF4488FF if is_user else 0xFF44FF88
+            
+            try:
+                with self._chat_container:
+                    with ui.HStack(height=0, spacing=4):
+                        ui.Label(f"[{sender}]:", width=60, style={"color": color})
+                        ui.Label(message, word_wrap=True, style={"color": 0xFFFFFFFF})
+            except Exception as e:
+                print(f"[WARNING] Could not add chat message: {e}")
         
-        color = 0xFF4488FF if is_user else 0xFF44FF88
-        
-        with self._chat_container:
-            with ui.HStack(height=0, spacing=4):
-                ui.Label(f"[{sender}]:", width=60, style={"color": color})
-                ui.Label(message, word_wrap=True, style={"color": 0xFFFFFFFF})
+        # Try to schedule on main thread using asyncio
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(_add_to_ui)
+            else:
+                _add_to_ui()
+        except:
+            # Fallback: direct call
+            _add_to_ui()
     
     def _on_clear_chat(self) -> None:
         """Clear chat history."""
@@ -858,35 +1061,118 @@ For MATERIAL changes (shiny, matte, metallic, plastic):
     # Static Menu Actions - New Object-based
     # --------------------------
     
+    def _rebuild_object_buttons(self) -> None:
+        """Rebuild the object selection buttons."""
+        if self._object_list_container is None:
+            return
+        self._object_list_container.clear()
+        with self._object_list_container:
+            if not self._object_table:
+                ui.Label("No objects found. Click Refresh.", style={"color": 0xFFAA6666})
+            else:
+                for name, path in list(self._object_table.items())[:30]:  # Limit to 30
+                    ui.Button(
+                        f"  {name}",
+                        clicked_fn=lambda p=path, n=name: self._select_object(p, n),
+                        height=20,
+                        style={"background_color": 0xFF3A3A3A, "border_radius": 2}
+                    )
+                if len(self._object_table) > 30:
+                    ui.Label(f"  + {len(self._object_table) - 30} more...", 
+                            style={"color": 0xFF666666, "font_size": 11})
+    
+    def _select_object(self, path: str, name: str) -> None:
+        """Select an object by setting the path field."""
+        if self._manual_path_model:
+            self._manual_path_model.set_value(path)
+        self._set_status(f"Selected: {name} ({path})")
+    
     def _get_selected_object_path(self) -> Optional[str]:
         """Get the USD path of the currently selected object."""
-        if not self._object_combo_model or not self._object_names_list:
-            return None
-        idx = self._object_combo_model.as_int
-        if 0 <= idx < len(self._object_names_list):
-            name = self._object_names_list[idx]
-            return self._object_table.get(name)
+        if self._manual_path_model:
+            return self._manual_path_model.as_string
         return None
     
     def _get_selected_object_name(self) -> str:
         """Get the name of the currently selected object."""
-        if not self._object_combo_model or not self._object_names_list:
-            return ""
-        idx = self._object_combo_model.as_int
-        if 0 <= idx < len(self._object_names_list):
-            return self._object_names_list[idx]
+        path = self._get_selected_object_path()
+        if path:
+            # Find name from path
+            for name, p in self._object_table.items():
+                if p == path:
+                    return name
+            # Return last part of path
+            return path.split("/")[-1]
         return ""
     
+    def _on_object_combo_changed(self, model) -> None:
+        """Handle object selection from ComboBox."""
+        idx = model.as_int
+        if 0 <= idx < len(self._object_paths_list):
+            selected_path = self._object_paths_list[idx]
+            self._manual_path_model.set_value(selected_path)
+            self._set_status(f"Selected: {self._object_names_list[idx]}")
+    
     def _on_refresh_objects_and_combo(self) -> None:
-        """Refresh objects and update ComboBox."""
+        """Refresh objects and rebuild ComboBox."""
         self._on_refresh_objects()
-        self._update_object_combo()
+        
+        # Update lists
+        self._object_names_list = list(self._object_table.keys()) if self._object_table else ["(none)"]
+        self._object_paths_list = list(self._object_table.values()) if self._object_table else ["/World/"]
+        
+        # Rebuild the UI to update ComboBox
+        if hasattr(self, '_static_frame') and self._static_frame:
+            self._static_frame.clear()
+            with self._static_frame:
+                self._build_static_menu()
+        
+        self._set_status(f"Found {len(self._object_table)} objects")
     
     def _update_object_combo(self) -> None:
-        """Update the object ComboBox with current object table."""
+        """Update the object list (legacy, now uses buttons)."""
         self._object_names_list = list(self._object_table.keys())
+        self._rebuild_object_buttons()
         # ComboBox in omni.ui needs to be rebuilt - this is a limitation
         self._set_status(f"Object list updated: {len(self._object_names_list)} objects. Re-open window to see changes in dropdown.")
+    
+    def _on_show_materials_info(self) -> None:
+        """Show popup with all available material presets."""
+        material_info = """
+╔════════════════════════════════════════════════════════════╗
+║                 AVAILABLE MATERIAL PRESETS                  ║
+╠════════════════════════════════════════════════════════════╣
+║  METALS (Metallic = 1.0)                                   ║
+║  ─────────────────────────────────────────────────────────  ║
+║  Gold     │ RGB(1.00, 0.84, 0.00) │ Roughness: 0.30       ║
+║  Silver   │ RGB(0.75, 0.75, 0.75) │ Roughness: 0.20       ║
+║  Copper   │ RGB(0.72, 0.45, 0.20) │ Roughness: 0.30       ║
+║  Bronze   │ RGB(0.55, 0.47, 0.33) │ Roughness: 0.35       ║
+║  Iron     │ RGB(0.30, 0.30, 0.35) │ Roughness: 0.50       ║
+║  Chrome   │ RGB(0.55, 0.55, 0.55) │ Roughness: 0.05       ║
+╠════════════════════════════════════════════════════════════╣
+║  NON-METALS (Metallic = 0.0)                               ║
+║  ─────────────────────────────────────────────────────────  ║
+║  Plastic  │ RGB(0.80, 0.20, 0.20) │ Roughness: 0.40       ║
+║  Rubber   │ RGB(0.10, 0.10, 0.10) │ Roughness: 0.90       ║
+║  Glass    │ RGB(0.90, 0.95, 1.00) │ Roughness: 0.00       ║
+║  Wood     │ RGB(0.55, 0.35, 0.15) │ Roughness: 0.70       ║
+║  Ceramic  │ RGB(0.95, 0.95, 0.90) │ Roughness: 0.30       ║
+║  Matte    │ RGB(0.50, 0.50, 0.50) │ Roughness: 1.00       ║
+╠════════════════════════════════════════════════════════════╣
+║  COLORS                                                     ║
+║  ─────────────────────────────────────────────────────────  ║
+║  Red, Green, Blue, Yellow, Cyan, Magenta                   ║
+╚════════════════════════════════════════════════════════════╝
+
+LLM Chat Commands:
+  • "make [object] gold/silver/copper/etc"
+  • "make [object] shiny" (roughness=0.1)
+  • "make [object] matte" (roughness=0.9)
+  • "make [object] metallic" (metallic=1.0)
+"""
+        print(material_info)
+        self._set_status("Material info printed to console. Check terminal output.")
     
     def _set_quick_color(self, r: float, g: float, b: float) -> None:
         """Set quick color values."""
@@ -1429,7 +1715,24 @@ For MATERIAL changes (shiny, matte, metallic, plastic):
             return False
     
     def _set_status(self, msg: str) -> None:
-        """Update the status label."""
-        if self._status_label:
-            self._status_label.text = msg
+        """Update the status label (thread-safe)."""
+        def _update():
+            try:
+                if self._status_label:
+                    self._status_label.text = msg
+            except Exception as e:
+                print(f"[WARNING] Could not update status: {e}")
+        
         print(f"[GenerativeModeling] {msg}")
+        
+        # Try to schedule on main thread using asyncio
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(_update)
+            else:
+                _update()
+        except:
+            # Fallback: direct call
+            _update()
