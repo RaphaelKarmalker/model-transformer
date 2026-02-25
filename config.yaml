@@ -3,7 +3,7 @@
 
 model:
   # Aktuelles Modell (kann geändert werden)
-  id: "microsoft/Phi-3-mini-4k-instruct"
+  id: "openai/gpt-oss-20b"
   
   # Alternative Modelle (auskommentiert):
   # id: "meta-llama/Meta-Llama-3.1-8B-Instruct"
@@ -13,7 +13,7 @@ model:
   # id: "Qwen/Qwen2.5-7B-Instruct"
   
   # Modell-Parameter
-  max_tokens: 256
+  max_tokens: 512
   torch_dtype: "auto"  # "auto", "float16", "bfloat16", oder "float32"
   device_map: "auto"   # "auto", "cuda", "cpu", oder spezifische GPU wie "cuda:0"
 
