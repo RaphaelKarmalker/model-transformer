@@ -1,0 +1,228 @@
+{
+  "model_id": "openai/gpt-oss-20b",
+  "timestamp": "2026-01-15T17:15:11.690755",
+  "model_load_time": 3.4660215377807617,
+  "total_tests": 10,
+  "passed": 10,
+  "failed": 0,
+  "accuracy": 1.0,
+  "total_inference_time": 58.772133111953735,
+  "average_inference_time": 5.877213311195374,
+  "results": [
+    {
+      "test_id": 1,
+      "description": "Valid rotation on known object",
+      "prompt": "Rotate the main_shaft by 30 degrees on the x-axis.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 6.579075336456299,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object. Prompt: \"Rotate the main_shaft by 30 degrees on the x-axis.\" The object table includes'main_shaft': '9923411'. So exactly one match. Return object_id '9923411', object_name'main_shaft'.assistantfinal{\n  \"object_id\": \"9923411\",\n  \"object_name\": \"main_shaft\"\n}",
+          "time": 3.018109083175659
+        },
+        {
+          "step": "transformation",
+          "response": "analysisWe need to produce JSON. The transformation is rotate_x 30 degrees. Valid. So output JSON with object_id \"9923411\", rotate_x \"30\", rotate_y \"0\", rotate_z \"0\", zoom \"1.0\", status \"\".\n\nCheck format: All values are strings. So \"30\" etc. status empty string.assistantfinal{\n  \"object_id\": \"9923411\",\n  \"rotate_x\": \"30\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"1.0\",\n  \"status\": \"\"\n}",
+          "time": 3.5609662532806396
+        }
+      ]
+    },
+    {
+      "test_id": 2,
+      "description": "Valid zoom on known object",
+      "prompt": "Zoom in on the engine_block by a factor of 2.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 8.247982263565063,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt. Prompt: \"Zoom in on the engine_block by a factor of 2.\" The object referenced is engine_block. In table, engine_block has id '3421299'. So output JSON with object_id '3421299', object_name 'engine_block'.assistantfinal{\n  \"object_id\": \"3421299\",\n  \"object_name\": \"engine_block\"\n}",
+          "time": 2.577873945236206
+        },
+        {
+          "step": "transformation",
+          "response": "analysisWe need to translate transformation request into JSON. The request: \"Zoom in on the engine_block by a factor of 2.\" So zoom factor 2.0. No rotation. object_id: \"3421299\". Output JSON with fields: object_id, rotate_x, rotate_y, rotate_z, zoom, status. All values as strings. status empty string. So:\n\n{\n  \"object_id\": \"3421299\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"2.0\",\n  \"status\": \"\"\n}\n\nMake sure to start with { and end with }.assistantfinal{\n  \"object_id\": \"3421299\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"2.0\",\n  \"status\": \"\"\n}",
+          "time": 5.670108318328857
+        }
+      ]
+    },
+    {
+      "test_id": 3,
+      "description": "Valid Y-axis rotation",
+      "prompt": "Rotate the left_gear 45 degrees around the y-axis.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 6.10888671875,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object. Prompt: \"Rotate the left_gear 45 degrees around the y-axis.\" The object table has 'left_gear': '2953382'. So exactly one match. Return object_id '2953382', object_name 'left_gear'.assistantfinal{\n  \"object_id\": \"2953382\",\n  \"object_name\": \"left_gear\"\n}",
+          "time": 2.6132287979125977
+        },
+        {
+          "step": "transformation",
+          "response": "analysisWe need to output JSON with object_id, rotate_x, rotate_y, rotate_z, zoom, status. The transformation is rotate_y 45 degrees. So rotate_x=0, rotate_y=45, rotate_z=0, zoom=1.0. All values should be strings. status empty string. Output JSON.assistantfinal{\n  \"object_id\": \"2953382\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"45\",\n  \"rotate_z\": \"0\",\n  \"zoom\": \"1.0\",\n  \"status\": \"\"\n}",
+          "time": 3.4956579208374023
+        }
+      ]
+    },
+    {
+      "test_id": 4,
+      "description": "Combined rotation and zoom",
+      "prompt": "Turn the cooling_fan 90 degrees on z-axis and zoom out to 0.5.",
+      "expected_outcome": "success",
+      "expected_cancel_reason": null,
+      "actual_outcome": "success",
+      "actual_cancel_reason": null,
+      "passed": true,
+      "total_inference_time": 6.006242513656616,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt. Prompt: \"Turn the cooling_fan 90 degrees on z-axis and zoom out to 0.5.\" The object referenced is cooling_fan. In table, cooling_fan has id '7712934'. So output JSON with object_id '7712934', object_name 'cooling_fan'.assistantfinal{\n  \"object_id\": \"7712934\",\n  \"object_name\": \"cooling_fan\"\n}",
+          "time": 3.0512614250183105
+        },
+        {
+          "step": "transformation",
+          "response": "analysisWe need to produce JSON with object_id \"7712934\", rotate_z 90, rotate_x 0, rotate_y 0, zoom 0.5, status empty string. All values as strings. Ensure JSON format.assistantfinal{\n  \"object_id\": \"7712934\",\n  \"rotate_x\": \"0\",\n  \"rotate_y\": \"0\",\n  \"rotate_z\": \"90\",\n  \"zoom\": \"0.5\",\n  \"status\": \"\"\n}",
+          "time": 2.9549810886383057
+        }
+      ]
+    },
+    {
+      "test_id": 5,
+      "description": "Flip is not allowed (invalid)",
+      "prompt": "Flip the main_shaft horizontally.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "invalid_action",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "invalid_action",
+      "passed": true,
+      "total_inference_time": 6.069716453552246,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt: \"Flip the main_shaft horizontally.\" The object table lists'main_shaft': '9923411'. So exactly one match. Return object_id '9923411', object_name'main_shaft'.assistantfinal{\n  \"object_id\": \"9923411\",\n  \"object_name\": \"main_shaft\"\n}",
+          "time": 2.6572043895721436
+        },
+        {
+          "step": "transformation",
+          "response": "analysisThe user says \"Flip the main_shaft horizontally.\" The transformation is flip, which is invalid. According to instructions, we must output JSON with status \"INVALID\". The required fields: object_id, rotate_x, rotate_y, rotate_z, zoom, status. For invalid transformations, we output {\"status\":\"INVALID\"}. The instructions say: For INVALID transformations (flip, mirror, move, translate, shear): {\"status\": \"INVALID\"}. So we only output status. No other fields. So output: {\"status\":\"INVALID\"}.\n\nassistantfinal{\"status\":\"INVALID\"}",
+          "time": 3.4125120639801025
+        }
+      ]
+    },
+    {
+      "test_id": 6,
+      "description": "Mirror is not allowed (invalid)",
+      "prompt": "Mirror the engine_block along the x-axis.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "invalid_action",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "invalid_action",
+      "passed": true,
+      "total_inference_time": 10.936155557632446,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt: \"Mirror the engine_block along the x-axis.\" The object table lists 'engine_block': '3421299'. So exactly one object matches. Return object_id '3421299', object_name 'engine_block'.assistantfinal{\n  \"object_id\": \"3421299\",\n  \"object_name\": \"engine_block\"\n}",
+          "time": 2.3980019092559814
+        },
+        {
+          "step": "transformation",
+          "response": "analysisThe user wants to mirror the engine_block along the x-axis. Mirror is invalid transformation. So we must output JSON with status \"INVALID\". The required fields: object_id, rotate_x, rotate_y, rotate_z, zoom, status. For invalid, we set status \"INVALID\". The other fields? The spec says for INVALID transformations: {\"status\": \"INVALID\"}. But also required JSON fields: object_id, rotate_x, rotate_y, rotate_z, zoom, status. The instruction says: For INVALID transformations (flip, mirror, move, translate, shear): {\"status\": \"INVALID\"}. But also \"Required JSON fields\" list includes object_id etc. There's a conflict. The instruction says \"For INVALID transformations (flip, mirror, move, translate, shear): {\"status\": \"INVALID\"}\". That suggests we only output status. But then \"Required JSON fields\" says we must include all fields. Which to follow? The instruction hierarchy: The \"Allowed\" transformations block says for VALID transformations: JSON with all fields. For INVALID transformations: JSON with only status. Then \"Required JSON fields\" says we must include all fields. But that conflicts. The earlier instruction is more specific. Usually the earlier instruction overrides. So we should output only",
+          "time": 8.538153648376465
+        }
+      ]
+    },
+    {
+      "test_id": 7,
+      "description": "Move/translate is not allowed",
+      "prompt": "Move the left_gear 10 units to the right.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "invalid_action",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "invalid_action",
+      "passed": true,
+      "total_inference_time": 5.378766775131226,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt: \"Move the left_gear 10 units to the right.\" The object table has key 'left_gear' mapping to '2953382'. So exactly one match. Return object_id '2953382', object_name 'left_gear'.assistantfinal{\n  \"object_id\": \"2953382\",\n  \"object_name\": \"left_gear\"\n}",
+          "time": 2.627270221710205
+        },
+        {
+          "step": "transformation",
+          "response": "analysisThe user says: \"Move the left_gear 10 units to the right.\" The transformation is a move/translate, which is invalid per instructions. So we must output {\"status\":\"INVALID\"} but also must include required fields? The instructions say: For INVALID transformations: {\"status\":\"INVALID\"}. So we only output that. No other fields. Must start with { and end with }. No explanation.assistantfinal{\"status\":\"INVALID\"}",
+          "time": 2.7514965534210205
+        }
+      ]
+    },
+    {
+      "test_id": 8,
+      "description": "Object not in catalog",
+      "prompt": "Rotate the banana by 45 degrees.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "unknown_object",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "unknown_object",
+      "passed": true,
+      "total_inference_time": 2.5129806995391846,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt: \"Rotate the banana by 45 degrees.\" The object table lists parts of a car: left_gear, right_gear, main_shaft, wheels, steering_column, engine_block, cooling_fan. No banana. So no match. Return empty strings.assistantfinal{\n  \"object_id\": \"\",\n  \"object_name\": \"\"\n}",
+          "time": 2.5129806995391846
+        }
+      ]
+    },
+    {
+      "test_id": 9,
+      "description": "Unknown object",
+      "prompt": "Zoom in on the spaceship.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "unknown_object",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "unknown_object",
+      "passed": true,
+      "total_inference_time": 3.2308480739593506,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt: \"Zoom in on the spaceship.\" The object table lists parts of a vehicle: left_gear, right_gear, main_shaft, wheels, steering_column, engine_block, cooling_fan. The prompt says \"Zoom in on the spaceship.\" That refers to the spaceship itself, not a part. None of the objects match \"spaceship\". So no object matches. Return empty strings.assistantfinal{\n  \"object_id\": \"\",\n  \"object_name\": \"\"\n}",
+          "time": 3.2308480739593506
+        }
+      ]
+    },
+    {
+      "test_id": 10,
+      "description": "Multiple wheels exist - ambiguous",
+      "prompt": "Rotate the wheel by 30 degrees.",
+      "expected_outcome": "cancel",
+      "expected_cancel_reason": "ambiguous",
+      "actual_outcome": "cancel",
+      "actual_cancel_reason": "ambiguous",
+      "passed": true,
+      "total_inference_time": 3.7014787197113037,
+      "raw_responses": [
+        {
+          "step": "identification",
+          "response": "analysisWe need to identify referenced object from prompt: \"Rotate the wheel by 30 degrees.\" Which wheel? The prompt says \"the wheel\" singular. In object table, there are four wheels: front_left_wheel, front_right_wheel, rear_left_wheel, rear_right_wheel. No other wheel. So ambiguous: more than one matches. According to rule: if more than one object matches, return object_id='MULTI' and object_name='MULTI'. So output JSON accordingly.assistantfinal{\n  \"object_id\": \"MULTI\",\n  \"object_name\": \"MULTI\"\n}",
+          "time": 3.7014787197113037
+        }
+      ]
+    }
+  ]
+}

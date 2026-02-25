@@ -1,0 +1,10 @@
+# Core dependencies
+pyyaml
+pydantic
+transformers
+torch
+langgraph
+
+# Acceleration & GPU support
+accelerate
+kernels

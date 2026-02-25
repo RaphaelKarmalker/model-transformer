@@ -135,6 +135,86 @@ The LLM provides helpful feedback when it cannot fulfill a request:
 
 ---
 
+## Example Usage: Transforming a Scene with LLM Commands
+
+This walkthrough demonstrates how to transform a 3D gear assembly using only natural language commands.
+
+### Step 0: Base Scene
+
+Starting with the original USD scene - an unmodified gear assembly.
+
+![Base Scene](Files/usage/0_base.png)
+
+---
+
+### Step 1: Change the Material of the Big Gear
+
+**Command:** *"Make the big gear gold"*
+
+The LLM identifies the large gear and applies a golden metallic material.
+
+![Gold Gear](Files/usage/1_gold.png)
+
+---
+
+### Step 2: Move the Big Gear
+
+**Command:** *"Move the big gear 10 units on the x and y axis"*
+
+The gear is translated along the X-axis.
+
+![Move Big Gear](Files/usage/2_move_big_gear.png)
+
+---
+
+### Step 3: Rotate the White Shaft
+
+**Command:** *"Make the shaft white and rotate it by 45 degree along the y axis"*
+
+The central shaft receives a clean white material.
+
+![White Shaft](Files/usage/3_white_shaft.png)
+
+---
+
+### Step 4: Blue Base Plate
+
+**Command:** *"Color the base plate blue"*
+
+The base plate is transformed to a vibrant blue color.
+
+![Blue Base Plate](Files/usage/4_blue_base_plate.png)
+
+---
+
+### Step 5: Move White Small Gear
+
+**Command:** *"Make the small gear white & move it up by 5"*
+
+The smaller gear is updated to match the shaft's white appearance.
+
+![White Small Gear](Files/usage/5_white_small_gear.png)
+
+---
+
+### Step 6: Memory & Compound Commands
+
+**Command:** *"Lift the Compund Gear by 5 Units"*
+
+The LLM remembers previous transformations and can apply consistent styling across objects.
+
+![Compound Gear](Files/usage/6_memory_compund_gear.png)
+
+---
+
+### Final Result
+
+The scene has been completely transformed using only natural language commands - no manual parameter adjustments required!
+
+![Final Scene](Files/usage/7_manual_chrome.png)
+
+---
+
 ## Tips & Best Practices
 
 1. **Always Refresh First**: After loading a new USD file, click "Refresh" in Manual mode to populate the object list
@@ -157,6 +237,59 @@ The LLM provides helpful feedback when it cannot fulfill a request:
 | LLM not responding | Ensure the model is loaded (status shows "Ready") |
 | Material not visible | Check that your object has a valid mesh |
 | Extension not found | Verify the extension path in Isaac Sim settings |
+
+---
+
+## Model Analysis
+
+We evaluated multiple open-source LLMs to find the best model for our agent pipeline. The benchmark tests 10 different scenarios including valid transformations (rotate, zoom), invalid operations (flip, mirror, move), unknown objects, and ambiguous requests.
+
+### Benchmark Results
+
+| Model | Accuracy | Avg. Inference Time | Load Time |
+|-------|----------|---------------------|-----------|
+| **GPT-OSS-20B** | **100%** | 5.88s | 3.47s |
+| Qwen2.5-7B | 90% | 1.04s | 2.35s |
+| Mistral-7B | 80% | 1.73s | 2.19s |
+| Phi-3-Mini | 80% | 1.01s | 1.58s |
+
+### Accuracy Comparison
+
+![Accuracy Comparison](bench/plots/accuracy_comparison.png)
+
+### Inference Time Comparison
+
+![Inference Time Comparison](bench/plots/inference_time_comparison.png)
+
+### Accuracy vs. Speed Trade-off
+
+![Accuracy vs Speed](bench/plots/accuracy_vs_speed.png)
+
+### Test Results per Model
+
+![Per Test Results](bench/plots/per_test_results.png)
+
+### Performance by Test Category
+
+![Category Performance](bench/plots/category_performance.png)
+
+### Benchmark Dashboard
+
+![Dashboard](bench/plots/dashboard.png)
+
+### Model Selection: GPT-OSS-20B
+
+After extensive benchmarking, we selected **openai/gpt-oss-20b** as our default model for the following reasons:
+
+1. **100% Accuracy**: The model correctly handles all test cases, including edge cases like ambiguous requests and invalid transformations. This is critical for our use case where every user command must be interpreted correctly.
+
+2. **Reliability over Speed**: While models like Qwen2.5-7B (1.04s) and Phi-3-Mini (1.01s) offer significantly faster inference times, their 90% and 80% accuracy rates mean that 1-2 out of every 10 commands could be misinterpreted or fail.
+
+3. **Acceptable Latency**: The ~5.9 second average inference time, while slower than alternatives, remains within an acceptable range for interactive 3D scene manipulation. Users typically need time to observe the result of one transformation before issuing the next command.
+
+4. **Correctness is Critical**: In a 3D modeling context, incorrect transformations can be difficult to undo or may go unnoticed, leading to accumulated errors. We prioritize **correct interpretation of every command** over raw speed.
+
+> **Conclusion**: For production use, we recommend GPT-OSS-20B. For rapid prototyping or testing where occasional errors are acceptable, Qwen2.5-7B offers an excellent speed/accuracy trade-off.
 
 ---
 
