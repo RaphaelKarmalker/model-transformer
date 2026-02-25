@@ -59,6 +59,47 @@ KEYWORD_TO_GROUP_AND_COLOR: Dict[str, Tuple[str, Gf.Vec4f]] = {
 
 LOOKS_ROOT_PATH = Sdf.Path("/World/Looks")
 
+# ---------------------------------------------------------------------------
+# WZL Production Mask — curated list of manipulable targets for the large
+# WZL factory scene.  Avoids a full scene traversal that would return
+# thousands of prims.
+#   • transforms   → xform_path
+#   • color / mat  → mesh_path  (or mesh_subset_path when present)
+# ---------------------------------------------------------------------------
+WZL_PRODUCTION_MASK = [
+    {"id": "schrank_tuer_links", "label": "schrank tuer links",
+     "xform_path": "/Root/Halle/Proki/StaticMeshActor_4953",
+     "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4953/Vollkunststoff_4mm__weis___0047304___425_mm_x_773_5_mm___18___2_5_mm_body1"},
+    {"id": "schrank_tuer_rechts", "label": "schrank tuer rechts",
+     "xform_path": "/Root/Halle/Proki/StaticMeshActor_4989",
+     "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4989/Vollkunststoff_4mm__weis___0047304___425_mm_x_773_5_mm___18___2_5_mm_body1"},
+    {"id": "tischplatte_vorne", "label": "tisch platte vorne",
+     "xform_path": "/Root/Halle/Proki/Kabine/Tischplatte_Buche/Tischplatte_40_1800x750__Buche_Multiplex___0063336_oa_10/StaticMeshActor_4622",
+     "mesh_path": "/Root/Halle/Proki/Kabine/Tischplatte_Buche/Tischplatte_40_1800x750__Buche_Multiplex___0063336_oa_10/StaticMeshActor_4622/Tischplatte_40_1800x750__Buche_Multiplex___0063336_oa_10_body1"},
+    {"id": "tischplatte_hinten", "label": "tisch platte hinten",
+     "xform_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x379/StaticMeshActor_4650",
+     "mesh_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x379/StaticMeshActor_4650/ITEM_0063336_TISCHPLATTE_40_1800X750_BUCHE_MULTIPLEX__LACKIERT_L_1800_B_750"},
+    {"id": "tischplatte_mitte", "label": "tisch platte mitte",
+     "xform_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x110/StaticMeshActor_4651",
+     "mesh_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x110/StaticMeshActor_4651/ITEM_0063336_TISCHPLATTE_40_1800X750_BUCHE_MULTIPLEX__LACKIERT_L_1800_B_750_2"},
+    {"id": "rahmen_vorne_oben", "label": "vorderer rahmen oben",
+     "xform_path": "/Root/Halle/Proki/StaticMeshActor_4409",
+     "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4409/Profil_X_8_80x40_2N_K15_2T___XMS___0068620___1720_body1"},
+    {"id": "rahmen_links_vorne", "label": "rahmen links vorne",
+     "xform_path": "/Root/Halle/Proki/P_Ra_hinten_1_2/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_2/StaticMeshActor_4422",
+     "mesh_path": "/Root/Halle/Proki/P_Ra_hinten_1_2/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_2/StaticMeshActor_4422/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_body1"},
+    {"id": "rahmen_rechts_vorne", "label": "rahmen rechts vorne",
+     "xform_path": "/Root/Halle/Proki/P_Ra_hinten_1/Profil_X_8_40_R80_90__K15___XMS___0067000___1934/StaticMeshActor_4417",
+     "mesh_path": "/Root/Halle/Proki/P_Ra_hinten_1/Profil_X_8_40_R80_90__K15___XMS___0067000___1934/StaticMeshActor_4417/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_body1"},
+    {"id": "tuerschloss", "label": "tuerschloss",
+     "xform_path": "/Root/Halle/Proki/StaticMeshActor_4954",
+     "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4954/Tuerschloss_X_8_Zn___0065266___V2_body1",
+     "mesh_subset_path": "/Root/Halle/Proki/StaticMeshActor_4954/Tuerschloss_X_8_Zn___0065266___V2_body1/Section0"},
+    {"id": "sideboard_rechts", "label": "side board rechts",
+     "xform_path": "/Root/Halle/Proki/Kabine/Scheibeneinfassleiste_8_Al_Vollkunststoff_4mm__weis_1319_x_514_1___V5_2/Vollkunststoff_4mm__weis___00047304___1312_mm_x_507_mm___FlSch___V5_2/StaticMeshActor_4207",
+     "mesh_path": "/Root/Halle/Proki/Kabine/Scheibeneinfassleiste_8_Al_Vollkunststoff_4mm__weis_1319_x_514_1___V5_2/Vollkunststoff_4mm__weis___00047304___1312_mm_x_507_mm___FlSch___V5_2/StaticMeshActor_4207/Vollkunststoff_4mm__weis___00047304___1312_mm_x_507_mm___FlSch___V5_body1"},
+]
+
 # Default object table (can be refreshed from USD)
 DEFAULT_OBJECT_TABLE = {
     "left_gear": "/World/left_gear",
@@ -501,6 +542,11 @@ class GenerativeModelingExtension(omni.ext.IExt):
             self._agent_manager: Optional[AgentManager] = None
             self._object_table: Dict[str, str] = DEFAULT_OBJECT_TABLE.copy()
             
+            # WZL Production Mask
+            self._use_wzl_mask: bool = False
+            self._wzl_toggle_btn: Optional[ui.Button] = None
+            self._wzl_mesh_paths: Dict[str, str] = {}  # label -> mesh_path for color ops
+            
             # Chat memory: stores last 3 turns (6 messages: 3 user + 3 assistant)
             self._chat_history: deque = deque(maxlen=6)
             
@@ -648,6 +694,20 @@ class GenerativeModelingExtension(omni.ext.IExt):
                                      "color": C._CLR_TEXT_BRIGHT, "font_size": 11,
                                      "border_color": C._CLR_BORDER_FOCUS, "border_width": 1},
             "Button::obj_selected:hovered": {"background_color": 0xFF684425},
+            # Toggle ON — green-ish accent, white text, clearly "active"
+            "Button::toggle_on": {"background_color": C._CLR_ACCENT_GREEN, "border_radius": 4,
+                                  "color": C._CLR_TEXT_ON_ACCENT, "font_size": 11,
+                                  "border_color": 0xFF50AA58, "border_width": 1},
+            "Button::toggle_on:hovered": {"background_color": 0xFF4A9A52,
+                                          "border_color": 0xFFFFFFFF},
+            "Button::toggle_on:pressed": {"background_color": 0xFF2A6A32},
+            # Toggle OFF — dim, muted, clearly "inactive"
+            "Button::toggle_off": {"background_color": C._CLR_BG_INPUT, "border_radius": 4,
+                                   "color": C._CLR_TEXT_DIM, "font_size": 11,
+                                   "border_color": C._CLR_BORDER, "border_width": 1},
+            "Button::toggle_off:hovered": {"background_color": 0xFF342A25,
+                                           "border_color": C._CLR_BORDER_FOCUS},
+            "Button::toggle_off:pressed": {"background_color": 0xFF241E1A},
             # Containers
             "ScrollingFrame": {"background_color": C._CLR_BG_PANEL, "border_radius": 4,
                                "border_color": C._CLR_BORDER, "border_width": 1},
@@ -719,6 +779,22 @@ class GenerativeModelingExtension(omni.ext.IExt):
             style={"background_color": C._CLR_BG, "border_width": 0}
         ):
           with ui.VStack(spacing=0, style={"margin_width": 10, "margin_height": 6}):
+
+            # ═══════════════════════════════════════
+            #  WZL PRODUCTION MASK
+            # ═══════════════════════════════════════
+            with ui.HStack(height=28, spacing=6):
+                self._wzl_toggle_btn = ui.Button(
+                    "  WZL Production Mask: OFF  " if not self._use_wzl_mask else "  WZL Production Mask: ON  ",
+                    clicked_fn=self._on_wzl_toggle_clicked,
+                    name="toggle_on" if self._use_wzl_mask else "toggle_off",
+                    height=26,
+                )
+                ui.Spacer()
+
+            ui.Spacer(height=4)
+            ui.Rectangle(height=1, style={"background_color": C._CLR_BORDER})
+            ui.Spacer(height=8)
 
             # ═══════════════════════════════════════
             #  OBJECT SELECTION
@@ -1224,10 +1300,16 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
         if stage is None:
             return "No USD stage is loaded."
         
-        # Find the prim
+        # Find the prim (and the matched label for WZL mesh-path lookup)
         prim = None
+        matched_label = response.object_name  # fallback
         if response.object_id:
             prim = stage.GetPrimAtPath(response.object_id)
+            # reverse-lookup the label from the object table
+            for _lbl, _path in self._object_table.items():
+                if _path == response.object_id:
+                    matched_label = _lbl
+                    break
         
         if not prim or not prim.IsValid():
             # Try to find by name in object table
@@ -1235,6 +1317,7 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
                 if name.lower() in response.object_name.lower() or response.object_name.lower() in name.lower():
                     prim = stage.GetPrimAtPath(path)
                     if prim and prim.IsValid():
+                        matched_label = name
                         break
         
         if not prim or not prim.IsValid():
@@ -1267,7 +1350,8 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
             rgba = Gf.Vec4f(response.color_r, response.color_g, response.color_b, 1.0)
             roughness = getattr(response, 'roughness', 0.5)
             metallic = getattr(response, 'metallic', 0.0)
-            material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{response.object_name.replace(' ', '_')}")
+            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', matched_label)
+            material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{safe_name}")
             self._ensure_xform(stage, LOOKS_ROOT_PATH)
             material = self._get_or_create_preview_material(
                 stage, material_path, rgba,
@@ -1275,13 +1359,8 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
                 metallic=metallic
             )
             
-            # Bind to prim and all its mesh children (same as manual mode)
-            bound = 0
-            if self._bind_material_to_prim(prim, material):
-                bound += 1
-            for mesh in self._collect_mesh_descendants(prim):
-                if self._bind_material_to_prim(mesh, material):
-                    bound += 1
+            # Bind — WZL mask targets the specific mesh; otherwise xform + descendants
+            bound = self._bind_material_with_wzl_awareness(stage, prim, material, matched_label)
             
             if bound > 0:
                 return f"Applied color RGB({response.color_r:.2f}, {response.color_g:.2f}, {response.color_b:.2f}) to '{response.object_name}' (rough={roughness:.2f}, metal={metallic:.2f}, {bound} prims)."
@@ -1308,17 +1387,13 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
             roughness = getattr(response, 'roughness', 0.5)
             metallic = getattr(response, 'metallic', 0.0)
             
-            material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{response.object_name.replace(' ', '_')}_mat")
+            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', matched_label)
+            material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{safe_name}_mat")
             self._ensure_xform(stage, LOOKS_ROOT_PATH)
             material = self._get_or_create_preview_material(stage, material_path, rgba, roughness, metallic)
             
-            # Bind to prim and all its mesh children (same as manual mode)
-            bound = 0
-            if self._bind_material_to_prim(prim, material):
-                bound += 1
-            for mesh in self._collect_mesh_descendants(prim):
-                if self._bind_material_to_prim(mesh, material):
-                    bound += 1
+            # Bind — WZL mask targets the specific mesh; otherwise xform + descendants
+            bound = self._bind_material_with_wzl_awareness(stage, prim, material, matched_label)
             
             if bound > 0:
                 return f"Applied material (roughness={roughness:.2f}, metallic={metallic:.2f}) to '{response.object_name}' ({bound} prims)."
@@ -1583,16 +1658,12 @@ LLM Chat Commands:
         
         rgba = Gf.Vec4f(r, g, b, 1.0)
         self._ensure_xform(stage, LOOKS_ROOT_PATH)
-        material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{name}")
+        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+        material_path = LOOKS_ROOT_PATH.AppendChild(f"mat_{safe_name}")
         material = self._get_or_create_preview_material(stage, material_path, rgba, roughness, metallic)
         
-        # Bind to prim and all its mesh children
-        bound = 0
-        if self._bind_material_to_prim(prim, material):
-            bound += 1
-        for mesh in self._collect_mesh_descendants(prim):
-            if self._bind_material_to_prim(mesh, material):
-                bound += 1
+        # Bind — WZL mask targets the specific mesh; otherwise xform + descendants
+        bound = self._bind_material_with_wzl_awareness(stage, prim, material, name)
         
         self._set_status(f"Applied material to '{name}': RGB({r:.2f},{g:.2f},{b:.2f}), rough={roughness:.2f}, metal={metallic:.2f} ({bound} prims)")
     
@@ -1614,12 +1685,7 @@ LLM Chat Commands:
             self._set_status(f"Object not found: {path}")
             return
         
-        cleared = 0
-        if self._clear_material_binding(prim):
-            cleared += 1
-        for mesh in self._collect_mesh_descendants(prim):
-            if self._clear_material_binding(mesh):
-                cleared += 1
+        cleared = self._clear_material_with_wzl_awareness(stage, prim, name)
         
         self._set_status(f"Cleared material bindings on '{name}' ({cleared} prims)")
     
@@ -1818,7 +1884,12 @@ LLM Chat Commands:
         self._set_status(f"Cleared bindings on {total_cleared} mesh prim(s).")
     
     def _on_refresh_objects(self) -> None:
-        """Refresh object table from USD stage."""
+        """Refresh object table from USD stage (or re-apply WZL mask)."""
+        if self._use_wzl_mask:
+            self._apply_wzl_mask()
+            self._set_status(f"WZL mask active — {len(self._object_table)} targets")
+            return
+        
         stage = self._get_stage()
         if stage is None:
             self._set_status("No USD stage is loaded.")
@@ -1827,6 +1898,95 @@ LLM Chat Commands:
         self._object_table = self._discover_scene_objects(stage)
         count = len(self._object_table)
         self._set_status(f"Refreshed object table: found {count} objects.")
+    
+    # --------------------------
+    # WZL Production Mask Helpers
+    # --------------------------
+    
+    def _on_wzl_toggle_clicked(self) -> None:
+        """Handle WZL mask toggle button click."""
+        self._use_wzl_mask = not self._use_wzl_mask
+        # Update button appearance
+        if hasattr(self, '_wzl_toggle_btn') and self._wzl_toggle_btn:
+            self._wzl_toggle_btn.text = "  WZL Production Mask: ON  " if self._use_wzl_mask else "  WZL Production Mask: OFF  "
+            self._wzl_toggle_btn.name = "toggle_on" if self._use_wzl_mask else "toggle_off"
+        if self._use_wzl_mask:
+            self._apply_wzl_mask()
+            self._set_status(f"WZL mask ON — {len(self._object_table)} targets loaded")
+        else:
+            # Revert to scene discovery
+            self._wzl_mesh_paths.clear()
+            stage = self._get_stage()
+            if stage:
+                self._object_table = self._discover_scene_objects(stage)
+            else:
+                self._object_table = DEFAULT_OBJECT_TABLE.copy()
+            self._set_status(f"WZL mask OFF — {len(self._object_table)} scene objects")
+        # Refresh UI
+        self._object_names_list = list(self._object_table.keys())
+        self._object_paths_list = list(self._object_table.values())
+        self._rebuild_object_buttons()
+        if self._manual_path_model and self._object_paths_list:
+            self._manual_path_model.set_value(self._object_paths_list[0])
+    
+    def _apply_wzl_mask(self) -> None:
+        """Replace object table with WZL production mask entries."""
+        self._object_table = {}
+        self._wzl_mesh_paths = {}
+        for entry in WZL_PRODUCTION_MASK:
+            label = entry["label"]
+            self._object_table[label] = entry["xform_path"]
+            # For color operations: prefer mesh_subset_path, fall back to mesh_path
+            self._wzl_mesh_paths[label] = entry.get("mesh_subset_path", entry["mesh_path"])
+    
+    def _bind_material_with_wzl_awareness(
+        self, stage: 'Usd.Stage', prim: 'Usd.Prim',
+        material: 'UsdShade.Material', label: str
+    ) -> int:
+        """Bind material to the right target.
+        
+        When the WZL mask is active, binds directly to the mesh (or GeomSubset)
+        referenced in the mask.  Otherwise falls back to the standard behaviour
+        of binding to the prim plus all its Mesh descendants.
+        
+        Returns the number of prims that were successfully bound.
+        """
+        if self._use_wzl_mask and label in self._wzl_mesh_paths:
+            target_path = self._wzl_mesh_paths[label]
+            target = stage.GetPrimAtPath(target_path)
+            if target and target.IsValid():
+                return 1 if self._bind_material_to_prim(target, material) else 0
+            print(f"[WARNING] WZL mesh target not found on stage: {target_path}")
+            return 0
+        # Default: bind to prim + mesh descendants
+        bound = 0
+        if self._bind_material_to_prim(prim, material):
+            bound += 1
+        for mesh in self._collect_mesh_descendants(prim):
+            if self._bind_material_to_prim(mesh, material):
+                bound += 1
+        return bound
+    
+    def _clear_material_with_wzl_awareness(
+        self, stage: 'Usd.Stage', prim: 'Usd.Prim', label: str
+    ) -> int:
+        """Clear material binding from the right target (WZL-aware).
+        
+        Returns the number of prims whose bindings were cleared.
+        """
+        if self._use_wzl_mask and label in self._wzl_mesh_paths:
+            target_path = self._wzl_mesh_paths[label]
+            target = stage.GetPrimAtPath(target_path)
+            if target and target.IsValid():
+                return 1 if self._clear_material_binding(target) else 0
+            return 0
+        cleared = 0
+        if self._clear_material_binding(prim):
+            cleared += 1
+        for mesh in self._collect_mesh_descendants(prim):
+            if self._clear_material_binding(mesh):
+                cleared += 1
+        return cleared
     
     # --------------------------
     # Light Actions
