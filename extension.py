@@ -24,7 +24,7 @@ import omni.ext
 import omni.ui as ui
 import omni.usd
 
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade
 
 # Global flags - will be set in on_startup
 AGENT_AVAILABLE = False
@@ -134,6 +134,8 @@ def _create_pydantic_models():
         # Material properties
         roughness: float = Field(default=0.5, description="Surface roughness (0=smooth/shiny, 1=rough/matte)")
         metallic: float = Field(default=0.0, description="Metallic appearance (0=dielectric, 1=metal)")
+        # Light fields
+        light_intensity: float = Field(default=5000.0, description="Light intensity (brightness)")
         # Error info
         error_message: str = Field(default="", description="Error message if action failed")
     
@@ -470,6 +472,16 @@ class GenerativeModelingExtension(omni.ext.IExt):
             self._color_g_model: Optional[ui.SimpleFloatModel] = None
             self._color_b_model: Optional[ui.SimpleFloatModel] = None
             
+            # Light UI models
+            self._light_x_model: Optional[ui.SimpleFloatModel] = None
+            self._light_y_model: Optional[ui.SimpleFloatModel] = None
+            self._light_z_model: Optional[ui.SimpleFloatModel] = None
+            self._light_intensity_model: Optional[ui.SimpleFloatModel] = None
+            self._light_r_model: Optional[ui.SimpleFloatModel] = None
+            self._light_g_model: Optional[ui.SimpleFloatModel] = None
+            self._light_b_model: Optional[ui.SimpleFloatModel] = None
+            self._light_counter: int = 0
+            
             # Object selection
             self._object_combo: Optional[ui.ComboBox] = None
             self._object_combo_model: Optional[ui.SimpleIntModel] = None
@@ -535,148 +547,327 @@ class GenerativeModelingExtension(omni.ext.IExt):
     # UI Building
     # --------------------------
     
+    # -- Color constants for the professional theme --
+    _CLR_BG          = 0xFF191C20
+    _CLR_BG_RAISED   = 0xFF22262C
+    _CLR_BG_INPUT    = 0xFF1C1F24
+    _CLR_BG_PANEL    = 0xFF1E2228
+    _CLR_BORDER      = 0xFF2E3440
+    _CLR_ACCENT      = 0xFF4C9AFF      # Primary blue
+    _CLR_ACCENT_HOVER = 0xFF6CB0FF
+    _CLR_ACCENT_DIM  = 0xFF2B5580
+    _CLR_ACCENT_GREEN = 0xFF4CAF50
+    _CLR_DANGER      = 0xFFCF6679
+    _CLR_TEXT         = 0xFFD8DEE9
+    _CLR_TEXT_DIM     = 0xFF7B869A
+    _CLR_TEXT_BRIGHT  = 0xFFECEFF4
+    _CLR_SECTION      = 0xFF81A1C1
+    _CLR_TAB_ACTIVE   = 0xFF4C9AFF
+    _CLR_TAB_INACTIVE = 0xFF22262C
+    _CLR_STATUS_BG    = 0xFF161A1E
+    _CLR_PRESET       = 0xFF2E3440
+
     def _build_ui(self) -> None:
         print("[GenerativeModeling] Creating main window...")
-        
-        # Clean professional dark theme
+
+        C = GenerativeModelingExtension  # shortcut for color constants
+
         self._style = {
-            "Window": {"background_color": 0xFF1E1E1E},
-            "Label": {"color": 0xFFBBBBBB, "font_size": 11},
-            "Label::section": {"color": 0xFF888888, "font_size": 10},
-            "Button": {"background_color": 0xFF383838, "border_radius": 2},
-            "Button:hovered": {"background_color": 0xFF484848},
-            "Button::primary": {"background_color": 0xFF3D6E99},
-            "FloatField": {"background_color": 0xFF2A2A2A, "border_radius": 2},
-            "StringField": {"background_color": 0xFF2A2A2A, "border_radius": 2},
-            "ScrollingFrame": {"background_color": 0xFF252525},
+            "Window": {"background_color": C._CLR_BG},
+            # Typography
+            "Label": {"color": C._CLR_TEXT, "font_size": 12},
+            "Label::section_title": {"color": C._CLR_SECTION, "font_size": 13},
+            "Label::field_label": {"color": C._CLR_TEXT_DIM, "font_size": 11},
+            "Label::axis_label": {"color": C._CLR_TEXT_DIM, "font_size": 11},
+            "Label::status": {"color": C._CLR_TEXT_DIM, "font_size": 10},
+            "Label::chat_system": {"color": C._CLR_TEXT_DIM, "font_size": 11},
+            # Inputs
+            "FloatField": {"background_color": C._CLR_BG_INPUT, "border_radius": 3,
+                           "border_color": C._CLR_BORDER, "border_width": 1,
+                           "color": C._CLR_TEXT_BRIGHT, "font_size": 12},
+            "StringField": {"background_color": C._CLR_BG_INPUT, "border_radius": 3,
+                            "border_color": C._CLR_BORDER, "border_width": 1,
+                            "color": C._CLR_TEXT_BRIGHT, "font_size": 12},
+            # Buttons
+            "Button": {"background_color": C._CLR_BG_RAISED, "border_radius": 4,
+                       "color": C._CLR_TEXT, "font_size": 11,
+                       "border_color": C._CLR_BORDER, "border_width": 1},
+            "Button:hovered": {"background_color": 0xFF2E3440},
+            "Button::primary": {"background_color": C._CLR_ACCENT, "border_radius": 4,
+                                "color": 0xFF000000, "font_size": 11, "border_width": 0},
+            "Button::primary:hovered": {"background_color": C._CLR_ACCENT_HOVER},
+            "Button::danger": {"background_color": 0xFF3A2030, "border_radius": 4,
+                               "color": C._CLR_DANGER, "font_size": 11,
+                               "border_color": 0xFF5A2030, "border_width": 1},
+            "Button::danger:hovered": {"background_color": 0xFF4A2838},
+            "Button::preset": {"background_color": C._CLR_PRESET, "border_radius": 3,
+                               "color": C._CLR_TEXT, "font_size": 10, "border_width": 0},
+            "Button::preset:hovered": {"background_color": 0xFF3B4252},
+            "Button::tab_active": {"background_color": C._CLR_TAB_ACTIVE, "border_radius": 0,
+                                   "color": 0xFFFFFFFF, "font_size": 12, "border_width": 0},
+            "Button::tab_inactive": {"background_color": C._CLR_TAB_INACTIVE, "border_radius": 0,
+                                     "color": C._CLR_TEXT_DIM, "font_size": 12, "border_width": 0},
+            "Button::tab_inactive:hovered": {"background_color": 0xFF2A3040},
+            "Button::obj_item": {"background_color": C._CLR_BG_INPUT, "border_radius": 3,
+                                 "color": C._CLR_TEXT, "font_size": 11, "border_width": 0},
+            "Button::obj_item:hovered": {"background_color": C._CLR_ACCENT_DIM},
+            # Containers
+            "ScrollingFrame": {"background_color": C._CLR_BG_PANEL, "border_radius": 4,
+                               "border_color": C._CLR_BORDER, "border_width": 1},
         }
-        
-        self._window = ui.Window("Generative Modeling", width=450, height=420, visible=True)
+
+        self._window = ui.Window("Generative Modeling", width=460, height=520, visible=True)
         self._window.frame.set_style(self._style)
-        
+
         with self._window.frame:
             with ui.VStack(spacing=0):
-                # Tab bar
-                with ui.HStack(height=22, spacing=0):
-                    self._static_mode_btn = ui.Button("Manual", clicked_fn=lambda: self._set_mode(0),
-                        style={"background_color": 0xFF3D6E99, "border_radius": 0})
-                    self._chat_mode_btn = ui.Button("Chat", clicked_fn=lambda: self._set_mode(1),
-                        style={"background_color": 0xFF2A2A2A, "border_radius": 0})
+                # ── Tab Bar ──
+                with ui.HStack(height=30, spacing=0):
+                    self._static_mode_btn = ui.Button(
+                        "  Manual Controls  ", clicked_fn=lambda: self._set_mode(0),
+                        name="tab_active", height=30)
+                    self._chat_mode_btn = ui.Button(
+                        "  AI Chat  ", clicked_fn=lambda: self._set_mode(1),
+                        name="tab_inactive", height=30)
                     ui.Spacer()
-                
-                # Content area
+
+                # Thin accent line under tabs
+                ui.Rectangle(height=2, style={"background_color": C._CLR_ACCENT})
+
+                # ── Content ──
                 with ui.ZStack():
                     self._static_frame = ui.Frame(visible=True)
                     with self._static_frame:
                         self._build_static_menu()
-                    
+
                     self._chat_frame = ui.Frame(visible=False)
                     with self._chat_frame:
                         self._build_chat_ui()
-                
-                # Status bar
-                with ui.HStack(height=18, style={"margin": 2}):
-                    self._status_label = ui.Label("Ready", style={"color": 0xFF666666, "font_size": 10})
+
+                # ── Status Bar ──
+                ui.Rectangle(height=1, style={"background_color": C._CLR_BORDER})
+                with ui.HStack(height=22, style={"margin_width": 8, "margin_height": 3,
+                                                  "background_color": C._CLR_STATUS_BG}):
+                    self._status_dot = ui.Rectangle(width=6, height=6,
+                        style={"background_color": C._CLR_ACCENT_GREEN, "border_radius": 3})
+                    ui.Spacer(width=6)
+                    self._status_label = ui.Label("Ready", name="status")
     
     def _set_mode(self, mode: int) -> None:
         """Switch between Static Menu (0) and Chat (1) mode."""
         self._mode_index.set_value(mode)
         self._on_mode_changed(None)
         if mode == 0:
-            self._static_mode_btn.set_style({"background_color": 0xFF3D6E99, "border_radius": 0})
-            self._chat_mode_btn.set_style({"background_color": 0xFF2A2A2A, "border_radius": 0})
+            self._static_mode_btn.name = "tab_active"
+            self._chat_mode_btn.name = "tab_inactive"
         else:
-            self._static_mode_btn.set_style({"background_color": 0xFF2A2A2A, "border_radius": 0})
-            self._chat_mode_btn.set_style({"background_color": 0xFF3D6E99, "border_radius": 0})
+            self._static_mode_btn.name = "tab_inactive"
+            self._chat_mode_btn.name = "tab_active"
     
+    def _build_section_header(self, title: str, icon: str = "") -> None:
+        """Render a styled section header with optional icon."""
+        C = GenerativeModelingExtension
+        with ui.HStack(height=20, spacing=4):
+            ui.Rectangle(width=3, height=14, style={"background_color": C._CLR_ACCENT, "border_radius": 1})
+            ui.Label(f"{icon}  {title}" if icon else title, name="section_title")
+            ui.Spacer()
+
     def _build_static_menu(self) -> None:
-        """Build the static menu UI - compact and professional."""
-        with ui.VStack(spacing=6, style={"margin": 6}):
-            
-            # --- OBJECT SELECTION ---
-            ui.Label("Object Selection", name="section")
-            with ui.HStack(height=22, spacing=4):
+        """Build the static menu UI — modern, grouped, professional."""
+        C = GenerativeModelingExtension
+
+        with ui.ScrollingFrame(
+            horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
+            vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
+            style={"background_color": C._CLR_BG, "border_width": 0}
+        ):
+          with ui.VStack(spacing=0, style={"margin_width": 10, "margin_height": 6}):
+
+            # ═══════════════════════════════════════
+            #  OBJECT SELECTION
+            # ═══════════════════════════════════════
+            self._build_section_header("Object Selection")
+            ui.Spacer(height=4)
+            with ui.HStack(height=26, spacing=4):
                 self._manual_path_model = ui.SimpleStringModel(
                     list(self._object_table.values())[0] if self._object_table else "/World/")
-                ui.StringField(self._manual_path_model)
-                ui.Button("Refresh", clicked_fn=self._on_refresh_objects_and_combo, width=50)
-            
-            # Object list
+                ui.StringField(self._manual_path_model, height=24)
+                ui.Button("Refresh", clicked_fn=self._on_refresh_objects_and_combo,
+                          width=60, height=24, name="primary")
+
+            ui.Spacer(height=4)
             self._object_names_list = list(self._object_table.keys()) if self._object_table else []
             self._object_paths_list = list(self._object_table.values()) if self._object_table else []
-            with ui.ScrollingFrame(height=55, style={"background_color": 0xFF252525}):
-                self._object_list_container = ui.VStack(spacing=1)
+            with ui.ScrollingFrame(height=60,
+                horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
+                vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED):
+                self._object_list_container = ui.VStack(spacing=2)
                 self._rebuild_object_buttons()
-            
-            # --- MATERIAL ---
-            ui.Label("Material", name="section")
-            with ui.HStack(height=22, spacing=4):
-                ui.Label("R", width=12)
+
+            # Separator
+            ui.Spacer(height=8)
+            ui.Rectangle(height=1, style={"background_color": C._CLR_BORDER})
+            ui.Spacer(height=8)
+
+            # ═══════════════════════════════════════
+            #  MATERIAL / COLOR
+            # ═══════════════════════════════════════
+            self._build_section_header("Material")
+            ui.Spacer(height=4)
+
+            # Color row
+            with ui.HStack(height=26, spacing=6):
+                ui.Label("Color", name="field_label", width=48)
+                ui.Label("R", name="axis_label", width=10)
                 self._color_r_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._color_r_model, width=38)
-                ui.Label("G", width=12)
+                ui.FloatField(self._color_r_model, width=48, height=22)
+                ui.Label("G", name="axis_label", width=10)
                 self._color_g_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._color_g_model, width=38)
-                ui.Label("B", width=12)
+                ui.FloatField(self._color_g_model, width=48, height=22)
+                ui.Label("B", name="axis_label", width=10)
                 self._color_b_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._color_b_model, width=38)
-                ui.Spacer(width=6)
-                ui.Label("Roughness", width=55)
+                ui.FloatField(self._color_b_model, width=48, height=22)
+                ui.Spacer()
+
+            # PBR row
+            with ui.HStack(height=26, spacing=6):
+                ui.Label("PBR", name="field_label", width=48)
+                ui.Label("Rough", name="axis_label", width=34)
                 self._roughness_model = ui.SimpleFloatModel(0.5)
-                ui.FloatField(self._roughness_model, width=38)
-                ui.Label("Metallic", width=45)
+                ui.FloatField(self._roughness_model, width=52, height=22)
+                ui.Spacer(width=4)
+                ui.Label("Metal", name="axis_label", width=34)
                 self._metallic_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._metallic_model, width=38)
-            
-            with ui.HStack(height=22, spacing=4):
-                ui.Button("Apply Material", clicked_fn=self._on_apply_material_clicked, width=85, name="primary")
-                ui.Button("Reset", clicked_fn=self._on_reset_material_clicked, width=50)
-            
+                ui.FloatField(self._metallic_model, width=52, height=22)
+                ui.Spacer()
+
+            ui.Spacer(height=4)
+            with ui.HStack(height=26, spacing=6):
+                ui.Button("Apply Material", clicked_fn=self._on_apply_material_clicked,
+                          width=110, height=24, name="primary")
+                ui.Button("Reset Material", clicked_fn=self._on_reset_material_clicked,
+                          width=100, height=24, name="danger")
+                ui.Spacer()
+
             # Presets
-            with ui.HStack(height=20, spacing=2):
-                ui.Button("Gold", clicked_fn=lambda: self._set_quick_material(1.0, 0.84, 0.0, 0.3, 1.0), width=36)
-                ui.Button("Silver", clicked_fn=lambda: self._set_quick_material(0.75, 0.75, 0.75, 0.2, 1.0), width=40)
-                ui.Button("Chrome", clicked_fn=lambda: self._set_quick_material(0.55, 0.55, 0.55, 0.05, 1.0), width=46)
-                ui.Button("Plastic", clicked_fn=lambda: self._set_quick_material(0.8, 0.2, 0.2, 0.4, 0.0), width=44)
-                ui.Button("Glass", clicked_fn=lambda: self._set_quick_material(0.9, 0.95, 1.0, 0.0, 0.0), width=38)
-                ui.Button("Red", clicked_fn=lambda: self._set_quick_color(1,0,0), width=30)
-                ui.Button("Green", clicked_fn=lambda: self._set_quick_color(0,1,0), width=40)
-                ui.Button("Blue", clicked_fn=lambda: self._set_quick_color(0,0,1), width=34)
-            
-            # --- TRANSFORM ---
-            ui.Label("Transform", name="section")
-            with ui.HStack(height=22, spacing=4):
-                ui.Label("Translate", width=52)
-                ui.Label("X", width=10)
+            ui.Spacer(height=4)
+            ui.Label("Presets", name="field_label")
+            ui.Spacer(height=2)
+            with ui.HStack(height=22, spacing=3):
+                ui.Button("Gold", clicked_fn=lambda: self._set_quick_material(1.0, 0.84, 0.0, 0.3, 1.0), name="preset")
+                ui.Button("Silver", clicked_fn=lambda: self._set_quick_material(0.75, 0.75, 0.75, 0.2, 1.0), name="preset")
+                ui.Button("Chrome", clicked_fn=lambda: self._set_quick_material(0.55, 0.55, 0.55, 0.05, 1.0), name="preset")
+                ui.Button("Plastic", clicked_fn=lambda: self._set_quick_material(0.8, 0.2, 0.2, 0.4, 0.0), name="preset")
+                ui.Button("Glass", clicked_fn=lambda: self._set_quick_material(0.9, 0.95, 1.0, 0.0, 0.0), name="preset")
+            with ui.HStack(height=22, spacing=3):
+                ui.Button("Red", clicked_fn=lambda: self._set_quick_color(1,0,0), name="preset",
+                          style={"background_color": 0xFF5C2020})
+                ui.Button("Green", clicked_fn=lambda: self._set_quick_color(0,1,0), name="preset",
+                          style={"background_color": 0xFF205C20})
+                ui.Button("Blue", clicked_fn=lambda: self._set_quick_color(0,0,1), name="preset",
+                          style={"background_color": 0xFF20205C})
+                ui.Spacer()
+
+            # Separator
+            ui.Spacer(height=8)
+            ui.Rectangle(height=1, style={"background_color": C._CLR_BORDER})
+            ui.Spacer(height=8)
+
+            # ═══════════════════════════════════════
+            #  TRANSFORM
+            # ═══════════════════════════════════════
+            self._build_section_header("Transform")
+            ui.Spacer(height=4)
+
+            # Translate
+            with ui.HStack(height=26, spacing=6):
+                ui.Label("Translate", name="field_label", width=52)
+                ui.Label("X", name="axis_label", width=10)
                 self._dx_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._dx_model, width=45)
-                ui.Label("Y", width=10)
+                ui.FloatField(self._dx_model, width=50, height=22)
+                ui.Label("Y", name="axis_label", width=10)
                 self._dy_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._dy_model, width=45)
-                ui.Label("Z", width=10)
+                ui.FloatField(self._dy_model, width=50, height=22)
+                ui.Label("Z", name="axis_label", width=10)
                 self._dz_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._dz_model, width=45)
-                ui.Button("Apply", clicked_fn=self._on_translate_object_clicked, width=45, name="primary")
-            
-            with ui.HStack(height=22, spacing=4):
-                ui.Label("Rotate", width=52)
-                ui.Label("X", width=10)
+                ui.FloatField(self._dz_model, width=50, height=22)
+                ui.Button("Apply", clicked_fn=self._on_translate_object_clicked,
+                          width=50, height=22, name="primary")
+
+            # Rotate
+            with ui.HStack(height=26, spacing=6):
+                ui.Label("Rotate", name="field_label", width=52)
+                ui.Label("X", name="axis_label", width=10)
                 self._rx_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._rx_model, width=45)
-                ui.Label("Y", width=10)
+                ui.FloatField(self._rx_model, width=50, height=22)
+                ui.Label("Y", name="axis_label", width=10)
                 self._ry_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._ry_model, width=45)
-                ui.Label("Z", width=10)
+                ui.FloatField(self._ry_model, width=50, height=22)
+                ui.Label("Z", name="axis_label", width=10)
                 self._rz_model = ui.SimpleFloatModel(0.0)
-                ui.FloatField(self._rz_model, width=45)
-                ui.Button("Apply", clicked_fn=self._on_rotate_object_clicked, width=45, name="primary")
-            
-            with ui.HStack(height=20, spacing=3):
-                ui.Button("+90° X", clicked_fn=lambda: self._quick_rotate(90,0,0), width=45)
-                ui.Button("+90° Y", clicked_fn=lambda: self._quick_rotate(0,90,0), width=45)
-                ui.Button("+90° Z", clicked_fn=lambda: self._quick_rotate(0,0,90), width=45)
-                ui.Button("Reset Rotation", clicked_fn=self._on_reset_rotation_clicked, width=80)
-            
+                ui.FloatField(self._rz_model, width=50, height=22)
+                ui.Button("Apply", clicked_fn=self._on_rotate_object_clicked,
+                          width=50, height=22, name="primary")
+
+            ui.Spacer(height=4)
+            with ui.HStack(height=22, spacing=3):
+                ui.Button("+90° X", clicked_fn=lambda: self._quick_rotate(90,0,0), name="preset")
+                ui.Button("+90° Y", clicked_fn=lambda: self._quick_rotate(0,90,0), name="preset")
+                ui.Button("+90° Z", clicked_fn=lambda: self._quick_rotate(0,0,90), name="preset")
+                ui.Spacer(width=8)
+                ui.Button("Reset Rotation", clicked_fn=self._on_reset_rotation_clicked,
+                          height=22, name="danger")
+                ui.Spacer()
+
+            # Separator
+            ui.Spacer(height=8)
+            ui.Rectangle(height=1, style={"background_color": C._CLR_BORDER})
+            ui.Spacer(height=8)
+
+            # ═══════════════════════════════════════
+            #  LIGHTING
+            # ═══════════════════════════════════════
+            self._build_section_header("Lighting")
+            ui.Spacer(height=4)
+
+            with ui.HStack(height=26, spacing=6):
+                ui.Label("Position", name="field_label", width=52)
+                ui.Label("X", name="axis_label", width=10)
+                self._light_x_model = ui.SimpleFloatModel(0.0)
+                ui.FloatField(self._light_x_model, width=50, height=22)
+                ui.Label("Y", name="axis_label", width=10)
+                self._light_y_model = ui.SimpleFloatModel(300.0)
+                ui.FloatField(self._light_y_model, width=50, height=22)
+                ui.Label("Z", name="axis_label", width=10)
+                self._light_z_model = ui.SimpleFloatModel(0.0)
+                ui.FloatField(self._light_z_model, width=50, height=22)
+                ui.Spacer()
+
+            with ui.HStack(height=26, spacing=6):
+                ui.Label("Intensity", name="field_label", width=52)
+                self._light_intensity_model = ui.SimpleFloatModel(5000.0)
+                ui.FloatField(self._light_intensity_model, width=60, height=22)
+                ui.Spacer(width=4)
+                ui.Label("R", name="axis_label", width=10)
+                self._light_r_model = ui.SimpleFloatModel(1.0)
+                ui.FloatField(self._light_r_model, width=40, height=22)
+                ui.Label("G", name="axis_label", width=10)
+                self._light_g_model = ui.SimpleFloatModel(1.0)
+                ui.FloatField(self._light_g_model, width=40, height=22)
+                ui.Label("B", name="axis_label", width=10)
+                self._light_b_model = ui.SimpleFloatModel(1.0)
+                ui.FloatField(self._light_b_model, width=40, height=22)
+
+            ui.Spacer(height=4)
+            with ui.HStack(height=26, spacing=6):
+                ui.Button("Create Light", clicked_fn=self._on_create_light_clicked,
+                          width=100, height=24, name="primary")
+                ui.Button("Delete All Lights", clicked_fn=self._on_delete_lights_clicked,
+                          width=120, height=24, name="danger")
+                ui.Spacer()
+
+            ui.Spacer(height=6)
+
             # Legacy (hidden)
             self._legacy_visible = False
             self._legacy_frame = ui.Frame(visible=False)
@@ -690,41 +881,69 @@ class GenerativeModelingExtension(omni.ext.IExt):
                         ui.Button("Rotate", clicked_fn=self._on_rotate_clicked, width=50)
     
     def _build_chat_ui(self) -> None:
-        """Build the chat interface UI - professional."""
-        with ui.VStack(spacing=4, style={"margin": 6}):
-            # Status + Load
-            with ui.HStack(height=22, spacing=6):
-                agent_status = "Ready" if AGENT_AVAILABLE else "Not Available"
-                status_color = 0xFF66BB66 if AGENT_AVAILABLE else 0xFFBB6666
-                ui.Label("Agent Status:", width=75)
-                ui.Label(agent_status, style={"color": status_color})
+        """Build the chat interface UI — clean, modern, professional."""
+        C = GenerativeModelingExtension
+
+        with ui.VStack(spacing=0, style={"margin_width": 10, "margin_height": 8}):
+            # ── Agent header ──
+            with ui.HStack(height=28, spacing=8):
+                ui.Rectangle(width=3, height=14,
+                    style={"background_color": C._CLR_ACCENT, "border_radius": 1})
+                ui.Label("AI Assistant", name="section_title")
                 ui.Spacer()
+                # Status indicator
+                agent_status = "Ready" if AGENT_AVAILABLE else "Unavailable"
+                status_clr = C._CLR_ACCENT_GREEN if AGENT_AVAILABLE else C._CLR_DANGER
+                ui.Rectangle(width=8, height=8,
+                    style={"background_color": status_clr, "border_radius": 4})
+                ui.Spacer(width=2)
+                ui.Label(agent_status, style={"color": status_clr, "font_size": 11})
+                ui.Spacer(width=6)
                 if AGENT_AVAILABLE:
-                    ui.Button("Load Model", clicked_fn=self._on_load_model, width=75, name="primary")
-            
-            # Chat area
+                    ui.Button("Load Model", clicked_fn=self._on_load_model,
+                              width=85, height=24, name="primary")
+
+            ui.Spacer(height=6)
+
+            # ── Chat messages area ──
             self._chat_scroll = ui.ScrollingFrame(
-                height=180,
+                height=240,
                 horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
-                vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED
+                vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
+                style={"background_color": C._CLR_BG_PANEL, "border_radius": 6,
+                       "border_color": C._CLR_BORDER, "border_width": 1}
             )
             with self._chat_scroll:
-                self._chat_container = ui.VStack(spacing=2)
+                self._chat_container = ui.VStack(spacing=4, style={"margin": 8})
                 with self._chat_container:
-                    ui.Label("Messages will appear here...", style={"color": 0xFF555555})
-            
-            # Input
-            with ui.HStack(height=32, spacing=4):
+                    ui.Label("Send a message to get started...", name="chat_system")
+
+            ui.Spacer(height=6)
+
+            # ── Input row ──
+            with ui.HStack(height=34, spacing=6):
                 self._chat_input_model = ui.SimpleStringModel("")
-                ui.StringField(self._chat_input_model, height=30, multiline=True)
-                ui.Button("Send", clicked_fn=self._on_send_chat, width=50, height=30, name="primary")
-            
-            with ui.HStack(height=20, spacing=3):
-                ui.Button("Rotate 45°", clicked_fn=lambda: self._insert_example("Rotate the gear by 45 degrees"), width=60)
-                ui.Button("Make Red", clicked_fn=lambda: self._insert_example("Make it red"), width=55)
-                ui.Button("Shiny Metal", clicked_fn=lambda: self._insert_example("Make it shiny metal"), width=70)
-                ui.Button("Clear Chat", clicked_fn=self._on_clear_chat, width=60)
-                ui.Button("List Objects", clicked_fn=self._on_show_objects_in_chat, width=70)
+                ui.StringField(self._chat_input_model, height=32, multiline=True,
+                    style={"border_radius": 6, "background_color": C._CLR_BG_INPUT,
+                           "border_color": C._CLR_ACCENT_DIM, "border_width": 1,
+                           "color": C._CLR_TEXT_BRIGHT, "font_size": 12})
+                ui.Button("Send", clicked_fn=self._on_send_chat,
+                          width=60, height=32, name="primary")
+
+            ui.Spacer(height=6)
+
+            # ── Quick actions ──
+            ui.Label("Quick commands", name="field_label")
+            ui.Spacer(height=3)
+            with ui.HStack(height=22, spacing=3):
+                ui.Button("Rotate 45°", clicked_fn=lambda: self._insert_example("Rotate the gear by 45 degrees"), name="preset")
+                ui.Button("Make Red", clicked_fn=lambda: self._insert_example("Make it red"), name="preset")
+                ui.Button("Shiny Metal", clicked_fn=lambda: self._insert_example("Make it shiny metal"), name="preset")
+                ui.Button("Add Light", clicked_fn=lambda: self._insert_example("Add a bright light above the scene at y=500"), name="preset")
+            with ui.HStack(height=22, spacing=3):
+                ui.Button("Clear Chat", clicked_fn=self._on_clear_chat, name="danger")
+                ui.Button("List Objects", clicked_fn=self._on_show_objects_in_chat, name="preset")
+                ui.Spacer()
     
     def _on_mode_changed(self, model) -> None:
         """Handle mode switch between Static and Chat."""
@@ -911,8 +1130,15 @@ RULES:
 - For colors: specify RGB values (0-1) in color_r, color_g, color_b
 - For scale: use the scale field (1.0 = no change)
 
-Return action_type as one of: 'transform', 'color', 'material', 'unknown', 'ambiguous', 'invalid'
+Return action_type as one of: 'transform', 'color', 'material', 'light', 'unknown', 'ambiguous', 'invalid'
 Set error_message to explain issues if action_type is unknown/ambiguous/invalid.
+
+For LIGHT placement:
+- action_type = 'light'
+- Use translate_x, translate_y, translate_z for the light POSITION
+- Set light_intensity (default 5000, range 100-50000)
+- Set color_r, color_g, color_b for light color (default white 1,1,1)
+- object_name will be used as the light name
 
 For MATERIAL changes (shiny, matte, metallic, chrome, silver, gold, etc.):
 - action_type = 'material'
@@ -1012,6 +1238,20 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
             else:
                 return f"Failed to apply color to '{response.object_name}'."
         
+        elif action == "light":
+            # Create a light source
+            position = (response.translate_x, response.translate_y, response.translate_z)
+            intensity = getattr(response, 'light_intensity', 5000.0)
+            color = (response.color_r, response.color_g, response.color_b)
+            
+            self._light_counter += 1
+            light_name = response.object_name.replace(' ', '_') if response.object_name else f"Light_{self._light_counter}"
+            
+            if self._create_light(stage, position, intensity, color, light_name):
+                return f"Created light '{light_name}' at ({position[0]}, {position[1]}, {position[2]}), intensity={intensity}, color=({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f})"
+            else:
+                return "Failed to create light."
+        
         elif action == "material":
             # Material change without necessarily changing color
             rgba = Gf.Vec4f(response.color_r, response.color_g, response.color_b, 1.0)
@@ -1042,14 +1282,27 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
         def _add_to_ui():
             if not self._chat_container:
                 return
-            
-            color = 0xFF4488FF if is_user else 0xFF44FF88
-            
+
+            C = GenerativeModelingExtension
+            if is_user:
+                tag_color = C._CLR_ACCENT
+                msg_color = C._CLR_TEXT_BRIGHT
+                bg_color = 0xFF1A2636
+            else:
+                tag_color = C._CLR_ACCENT_GREEN
+                msg_color = C._CLR_TEXT
+                bg_color = 0xFF1A2A1E
+
             try:
                 with self._chat_container:
-                    with ui.HStack(height=0, spacing=4):
-                        ui.Label(f"[{sender}]:", width=60, style={"color": color})
-                        ui.Label(message, word_wrap=True, style={"color": 0xFFFFFFFF})
+                    with ui.HStack(height=0, spacing=6,
+                                   style={"background_color": bg_color, "border_radius": 4,
+                                          "margin_height": 1, "margin_width": 2}):
+                        ui.Rectangle(width=3, style={"background_color": tag_color, "border_radius": 1})
+                        ui.Label(f"{sender}", width=48,
+                                 style={"color": tag_color, "font_size": 11})
+                        ui.Label(message, word_wrap=True,
+                                 style={"color": msg_color, "font_size": 12})
             except Exception as e:
                 print(f"[WARNING] Could not add chat message: {e}")
         
@@ -1071,7 +1324,7 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
         if self._chat_container:
             self._chat_container.clear()
             with self._chat_container:
-                ui.Label("Chat cleared.", style={"color": 0xFF888888})
+                ui.Label("Chat cleared.", name="chat_system")
         self._set_status("Chat history cleared.")
     
     def _insert_example(self, text: str) -> None:
@@ -1092,21 +1345,22 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
         """Rebuild the object selection buttons."""
         if self._object_list_container is None:
             return
+        C = GenerativeModelingExtension
         self._object_list_container.clear()
         with self._object_list_container:
             if not self._object_table:
-                ui.Label("No objects found. Click Refresh.", style={"color": 0xFFAA6666})
+                ui.Label("No objects found. Click Refresh.",
+                         style={"color": C._CLR_DANGER, "font_size": 11})
             else:
-                for name, path in list(self._object_table.items())[:30]:  # Limit to 30
+                for name, path in list(self._object_table.items())[:30]:
                     ui.Button(
                         f"  {name}",
                         clicked_fn=lambda p=path, n=name: self._select_object(p, n),
-                        height=20,
-                        style={"background_color": 0xFF3A3A3A, "border_radius": 2}
+                        height=22, name="obj_item"
                     )
                 if len(self._object_table) > 30:
-                    ui.Label(f"  + {len(self._object_table) - 30} more...", 
-                            style={"color": 0xFF666666, "font_size": 11})
+                    ui.Label(f"  + {len(self._object_table) - 30} more...",
+                            style={"color": C._CLR_TEXT_DIM, "font_size": 11})
     
     def _select_object(self, path: str, name: str) -> None:
         """Select an object by setting the path field."""
@@ -1512,6 +1766,70 @@ LLM Chat Commands:
         self._set_status(f"Refreshed object table: found {count} objects.")
     
     # --------------------------
+    # Light Actions
+    # --------------------------
+    
+    def _on_create_light_clicked(self) -> None:
+        """Create a SphereLight from the UI fields."""
+        stage = self._get_stage()
+        if not stage:
+            self._set_status("No USD stage loaded.")
+            return
+        
+        x = self._light_x_model.as_float if self._light_x_model else 0.0
+        y = self._light_y_model.as_float if self._light_y_model else 300.0
+        z = self._light_z_model.as_float if self._light_z_model else 0.0
+        intensity = self._light_intensity_model.as_float if self._light_intensity_model else 5000.0
+        r = self._light_r_model.as_float if self._light_r_model else 1.0
+        g = self._light_g_model.as_float if self._light_g_model else 1.0
+        b = self._light_b_model.as_float if self._light_b_model else 1.0
+        
+        self._light_counter += 1
+        name = f"Light_{self._light_counter}"
+        
+        if self._create_light(stage, (x, y, z), intensity, (r, g, b), name):
+            self._set_status(f"Created '{name}' at ({x}, {y}, {z}), intensity={intensity}")
+        else:
+            self._set_status("Failed to create light.")
+    
+    def _on_delete_lights_clicked(self) -> None:
+        """Delete all generated lights under /World/Lights."""
+        stage = self._get_stage()
+        if not stage:
+            self._set_status("No USD stage loaded.")
+            return
+        
+        lights_prim = stage.GetPrimAtPath("/World/Lights")
+        if lights_prim and lights_prim.IsValid():
+            children = list(lights_prim.GetChildren())
+            for child in children:
+                stage.RemovePrim(child.GetPath())
+            self._light_counter = 0
+            self._set_status(f"Deleted {len(children)} light(s).")
+        else:
+            self._set_status("No lights found.")
+    
+    def _create_light(self, stage, position, intensity=5000.0, color=(1.0, 1.0, 1.0), name="Light") -> bool:
+        """Create a SphereLight at the given position."""
+        try:
+            light_path = Sdf.Path(f"/World/Lights/{name}")
+            self._ensure_xform(stage, Sdf.Path("/World/Lights"))
+            
+            light = UsdLux.SphereLight.Define(stage, light_path)
+            light.CreateIntensityAttr(float(intensity))
+            light.CreateColorAttr(Gf.Vec3f(float(color[0]), float(color[1]), float(color[2])))
+            light.CreateRadiusAttr(1.0)
+            
+            # Set position
+            xf = UsdGeom.Xformable(light.GetPrim())
+            xf.AddTranslateOp().Set(Gf.Vec3d(float(position[0]), float(position[1]), float(position[2])))
+            
+            return True
+        except Exception as e:
+            print(f"[ERROR] Light creation failed: {e}")
+            return False
+    
+    # --------------------------
     # USD Helpers
     # --------------------------
     
@@ -1743,10 +2061,21 @@ LLM Chat Commands:
     
     def _set_status(self, msg: str) -> None:
         """Update the status label (thread-safe)."""
+        C = GenerativeModelingExtension
+
         def _update():
             try:
                 if self._status_label:
                     self._status_label.text = msg
+                # Update status dot color based on message content
+                if hasattr(self, '_status_dot') and self._status_dot:
+                    lower = msg.lower()
+                    if 'error' in lower or 'fail' in lower:
+                        self._status_dot.set_style({"background_color": C._CLR_DANGER, "border_radius": 3})
+                    elif 'processing' in lower or 'loading' in lower:
+                        self._status_dot.set_style({"background_color": 0xFFFFB74D, "border_radius": 3})
+                    else:
+                        self._status_dot.set_style({"background_color": C._CLR_ACCENT_GREEN, "border_radius": 3})
             except Exception as e:
                 print(f"[WARNING] Could not update status: {e}")
         

@@ -3,7 +3,7 @@
 
 model:
   # Aktuelles Modell (kann geändert werden)
-  id: "openai/gpt-oss-20b"
+  id: "microsoft/Phi-3-mini-4k-instruct"
   
   # Alternative Modelle (auskommentiert):
   # id: "meta-llama/Meta-Llama-3.1-8B-Instruct"
