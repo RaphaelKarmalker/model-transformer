@@ -553,30 +553,31 @@ class GenerativeModelingExtension(omni.ext.IExt):
     # --------------------------
     
     # -- Color constants for the professional theme --
-    _CLR_BG           = 0xFF191C20
-    _CLR_BG_RAISED    = 0xFF252A32
-    _CLR_BG_INPUT     = 0xFF1C1F24
-    _CLR_BG_PANEL     = 0xFF1E2228
-    _CLR_BORDER       = 0xFF3B4252
-    _CLR_BORDER_FOCUS = 0xFF4C9AFF
-    _CLR_ACCENT       = 0xFF2B6CB8      # Primary blue — dark enough for white text
-    _CLR_ACCENT_HOVER = 0xFF3A7FCC
-    _CLR_ACCENT_PRESS = 0xFF1E5090
-    _CLR_ACCENT_DIM   = 0xFF1E3A5C
-    _CLR_ACCENT_GREEN = 0xFF3A8A42
-    _CLR_DANGER       = 0xFFCF6679
-    _CLR_DANGER_BG    = 0xFF3A1A22
-    _CLR_DANGER_PRESS = 0xFF4A0A18
-    _CLR_TEXT         = 0xFFD8DEE9
-    _CLR_TEXT_DIM     = 0xFF8892A4
-    _CLR_TEXT_BRIGHT  = 0xFFECEFF4
+    # All values are in omni.ui ABGR format: 0xAABBGGRR
+    _CLR_BG           = 0xFF201C19
+    _CLR_BG_RAISED    = 0xFF322A25
+    _CLR_BG_INPUT     = 0xFF241F1C
+    _CLR_BG_PANEL     = 0xFF28221E
+    _CLR_BORDER       = 0xFF52423B
+    _CLR_BORDER_FOCUS = 0xFFFF9A4C
+    _CLR_ACCENT       = 0xFFB86C2B      # Primary blue — dark enough for white text
+    _CLR_ACCENT_HOVER = 0xFFCC7F3A
+    _CLR_ACCENT_PRESS = 0xFF90501E
+    _CLR_ACCENT_DIM   = 0xFF5C3A1E
+    _CLR_ACCENT_GREEN = 0xFF428A3A
+    _CLR_DANGER       = 0xFF7966CF
+    _CLR_DANGER_BG    = 0xFF221A3A
+    _CLR_DANGER_PRESS = 0xFF180A4A
+    _CLR_TEXT         = 0xFFE9DED8
+    _CLR_TEXT_DIM     = 0xFFA49288
+    _CLR_TEXT_BRIGHT  = 0xFFF4EFEC
     _CLR_TEXT_ON_ACCENT = 0xFFFFFFFF   # Always white on coloured buttons
-    _CLR_SECTION      = 0xFF81A1C1
-    _CLR_TAB_ACTIVE   = 0xFF2B6CB8
-    _CLR_TAB_INACTIVE = 0xFF1C1F24
-    _CLR_STATUS_BG    = 0xFF141619
-    _CLR_PRESET       = 0xFF2A2F3A
-    _CLR_OBJ_SELECTED = 0xFF1E3A5C
+    _CLR_SECTION      = 0xFFC1A181
+    _CLR_TAB_ACTIVE   = 0xFFB86C2B
+    _CLR_TAB_INACTIVE = 0xFF241F1C
+    _CLR_STATUS_BG    = 0xFF191614
+    _CLR_PRESET       = 0xFF3A2F2A
+    _CLR_OBJ_SELECTED = 0xFF5C3A1E
 
     def _build_ui(self) -> None:
         print("[GenerativeModeling] Creating main window...")
@@ -603,9 +604,9 @@ class GenerativeModelingExtension(omni.ext.IExt):
             "Button": {"background_color": C._CLR_BG_RAISED, "border_radius": 4,
                        "color": C._CLR_TEXT, "font_size": 11,
                        "border_color": C._CLR_BORDER, "border_width": 1},
-            "Button:hovered": {"background_color": 0xFF2E3440,
+            "Button:hovered": {"background_color": 0xFF40342E,
                                "border_color": C._CLR_BORDER_FOCUS},
-            "Button:pressed": {"background_color": 0xFF1A1E24,
+            "Button:pressed": {"background_color": 0xFF241E1A,
                                "border_color": C._CLR_ACCENT},
             # Primary — dark blue, white text, always readable
             "Button::primary": {"background_color": C._CLR_ACCENT, "border_radius": 4,
@@ -618,35 +619,35 @@ class GenerativeModelingExtension(omni.ext.IExt):
             "Button::danger": {"background_color": C._CLR_DANGER_BG, "border_radius": 4,
                                "color": C._CLR_DANGER, "font_size": 11,
                                "border_color": C._CLR_DANGER, "border_width": 1},
-            "Button::danger:hovered": {"background_color": 0xFF4A1825,
-                                       "border_color": 0xFFE07888},
+            "Button::danger:hovered": {"background_color": 0xFF25184A,
+                                       "border_color": 0xFF8878E0},
             "Button::danger:pressed": {"background_color": C._CLR_DANGER_PRESS},
             # Preset — clearly a button: visible border, hover fill
             "Button::preset": {"background_color": C._CLR_PRESET, "border_radius": 3,
                                "color": C._CLR_TEXT, "font_size": 10,
                                "border_color": C._CLR_BORDER, "border_width": 1},
-            "Button::preset:hovered": {"background_color": 0xFF343B4A,
+            "Button::preset:hovered": {"background_color": 0xFF4A3B34,
                                        "border_color": C._CLR_BORDER_FOCUS},
-            "Button::preset:pressed": {"background_color": 0xFF1E2430},
+            "Button::preset:pressed": {"background_color": 0xFF30241E},
             # Tabs
             "Button::tab_active": {"background_color": C._CLR_TAB_ACTIVE, "border_radius": 0,
                                    "color": C._CLR_TEXT_ON_ACCENT, "font_size": 12, "border_width": 0},
             "Button::tab_active:hovered": {"background_color": C._CLR_ACCENT_HOVER},
             "Button::tab_inactive": {"background_color": C._CLR_TAB_INACTIVE, "border_radius": 0,
                                      "color": C._CLR_TEXT_DIM, "font_size": 12, "border_width": 0},
-            "Button::tab_inactive:hovered": {"background_color": 0xFF252A34},
+            "Button::tab_inactive:hovered": {"background_color": 0xFF342A25},
             # Object list items
             "Button::obj_item": {"background_color": C._CLR_BG_INPUT, "border_radius": 3,
                                  "color": C._CLR_TEXT, "font_size": 11,
                                  "border_color": C._CLR_BORDER, "border_width": 1},
-            "Button::obj_item:hovered": {"background_color": 0xFF233045,
+            "Button::obj_item:hovered": {"background_color": 0xFF453023,
                                          "border_color": C._CLR_BORDER_FOCUS},
             "Button::obj_item:pressed": {"background_color": C._CLR_ACCENT_DIM},
             # Selected object item
             "Button::obj_selected": {"background_color": C._CLR_OBJ_SELECTED, "border_radius": 3,
                                      "color": C._CLR_TEXT_BRIGHT, "font_size": 11,
                                      "border_color": C._CLR_BORDER_FOCUS, "border_width": 1},
-            "Button::obj_selected:hovered": {"background_color": 0xFF254468},
+            "Button::obj_selected:hovered": {"background_color": 0xFF684425},
             # Containers
             "ScrollingFrame": {"background_color": C._CLR_BG_PANEL, "border_radius": 4,
                                "border_color": C._CLR_BORDER, "border_width": 1},
