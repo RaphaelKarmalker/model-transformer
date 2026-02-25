@@ -481,7 +481,12 @@ class GenerativeModelingExtension(omni.ext.IExt):
             self._light_g_model: Optional[ui.SimpleFloatModel] = None
             self._light_b_model: Optional[ui.SimpleFloatModel] = None
             self._light_counter: int = 0
-            
+
+            # Object selection tracking
+            self._selected_obj_btn: Optional[ui.Button] = None  # Currently highlighted button
+            self._chat_status_label: Optional[ui.Label] = None  # Live status inside chat tab
+            self._chat_status_dot = None  # Dot rectangle in chat status bar
+
             # Object selection
             self._object_combo: Optional[ui.ComboBox] = None
             self._object_combo_model: Optional[ui.SimpleIntModel] = None
@@ -548,24 +553,30 @@ class GenerativeModelingExtension(omni.ext.IExt):
     # --------------------------
     
     # -- Color constants for the professional theme --
-    _CLR_BG          = 0xFF191C20
-    _CLR_BG_RAISED   = 0xFF22262C
-    _CLR_BG_INPUT    = 0xFF1C1F24
-    _CLR_BG_PANEL    = 0xFF1E2228
-    _CLR_BORDER      = 0xFF2E3440
-    _CLR_ACCENT      = 0xFF4C9AFF      # Primary blue
-    _CLR_ACCENT_HOVER = 0xFF6CB0FF
-    _CLR_ACCENT_DIM  = 0xFF2B5580
-    _CLR_ACCENT_GREEN = 0xFF4CAF50
-    _CLR_DANGER      = 0xFFCF6679
+    _CLR_BG           = 0xFF191C20
+    _CLR_BG_RAISED    = 0xFF252A32
+    _CLR_BG_INPUT     = 0xFF1C1F24
+    _CLR_BG_PANEL     = 0xFF1E2228
+    _CLR_BORDER       = 0xFF3B4252
+    _CLR_BORDER_FOCUS = 0xFF4C9AFF
+    _CLR_ACCENT       = 0xFF2B6CB8      # Primary blue — dark enough for white text
+    _CLR_ACCENT_HOVER = 0xFF3A7FCC
+    _CLR_ACCENT_PRESS = 0xFF1E5090
+    _CLR_ACCENT_DIM   = 0xFF1E3A5C
+    _CLR_ACCENT_GREEN = 0xFF3A8A42
+    _CLR_DANGER       = 0xFFCF6679
+    _CLR_DANGER_BG    = 0xFF3A1A22
+    _CLR_DANGER_PRESS = 0xFF4A0A18
     _CLR_TEXT         = 0xFFD8DEE9
-    _CLR_TEXT_DIM     = 0xFF7B869A
+    _CLR_TEXT_DIM     = 0xFF8892A4
     _CLR_TEXT_BRIGHT  = 0xFFECEFF4
+    _CLR_TEXT_ON_ACCENT = 0xFFFFFFFF   # Always white on coloured buttons
     _CLR_SECTION      = 0xFF81A1C1
-    _CLR_TAB_ACTIVE   = 0xFF4C9AFF
-    _CLR_TAB_INACTIVE = 0xFF22262C
-    _CLR_STATUS_BG    = 0xFF161A1E
-    _CLR_PRESET       = 0xFF2E3440
+    _CLR_TAB_ACTIVE   = 0xFF2B6CB8
+    _CLR_TAB_INACTIVE = 0xFF1C1F24
+    _CLR_STATUS_BG    = 0xFF141619
+    _CLR_PRESET       = 0xFF2A2F3A
+    _CLR_OBJ_SELECTED = 0xFF1E3A5C
 
     def _build_ui(self) -> None:
         print("[GenerativeModeling] Creating main window...")
@@ -588,29 +599,54 @@ class GenerativeModelingExtension(omni.ext.IExt):
             "StringField": {"background_color": C._CLR_BG_INPUT, "border_radius": 3,
                             "border_color": C._CLR_BORDER, "border_width": 1,
                             "color": C._CLR_TEXT_BRIGHT, "font_size": 12},
-            # Buttons
+            # Buttons — base: subtle raised with visible border
             "Button": {"background_color": C._CLR_BG_RAISED, "border_radius": 4,
                        "color": C._CLR_TEXT, "font_size": 11,
                        "border_color": C._CLR_BORDER, "border_width": 1},
-            "Button:hovered": {"background_color": 0xFF2E3440},
+            "Button:hovered": {"background_color": 0xFF2E3440,
+                               "border_color": C._CLR_BORDER_FOCUS},
+            "Button:pressed": {"background_color": 0xFF1A1E24,
+                               "border_color": C._CLR_ACCENT},
+            # Primary — dark blue, white text, always readable
             "Button::primary": {"background_color": C._CLR_ACCENT, "border_radius": 4,
-                                "color": 0xFF000000, "font_size": 11, "border_width": 0},
-            "Button::primary:hovered": {"background_color": C._CLR_ACCENT_HOVER},
-            "Button::danger": {"background_color": 0xFF3A2030, "border_radius": 4,
+                                "color": C._CLR_TEXT_ON_ACCENT, "font_size": 11,
+                                "border_color": C._CLR_ACCENT_HOVER, "border_width": 1},
+            "Button::primary:hovered": {"background_color": C._CLR_ACCENT_HOVER,
+                                        "border_color": 0xFFFFFFFF},
+            "Button::primary:pressed": {"background_color": C._CLR_ACCENT_PRESS},
+            # Danger — subtle red tint, danger-red text
+            "Button::danger": {"background_color": C._CLR_DANGER_BG, "border_radius": 4,
                                "color": C._CLR_DANGER, "font_size": 11,
-                               "border_color": 0xFF5A2030, "border_width": 1},
-            "Button::danger:hovered": {"background_color": 0xFF4A2838},
+                               "border_color": C._CLR_DANGER, "border_width": 1},
+            "Button::danger:hovered": {"background_color": 0xFF4A1825,
+                                       "border_color": 0xFFE07888},
+            "Button::danger:pressed": {"background_color": C._CLR_DANGER_PRESS},
+            # Preset — clearly a button: visible border, hover fill
             "Button::preset": {"background_color": C._CLR_PRESET, "border_radius": 3,
-                               "color": C._CLR_TEXT, "font_size": 10, "border_width": 0},
-            "Button::preset:hovered": {"background_color": 0xFF3B4252},
+                               "color": C._CLR_TEXT, "font_size": 10,
+                               "border_color": C._CLR_BORDER, "border_width": 1},
+            "Button::preset:hovered": {"background_color": 0xFF343B4A,
+                                       "border_color": C._CLR_BORDER_FOCUS},
+            "Button::preset:pressed": {"background_color": 0xFF1E2430},
+            # Tabs
             "Button::tab_active": {"background_color": C._CLR_TAB_ACTIVE, "border_radius": 0,
-                                   "color": 0xFFFFFFFF, "font_size": 12, "border_width": 0},
+                                   "color": C._CLR_TEXT_ON_ACCENT, "font_size": 12, "border_width": 0},
+            "Button::tab_active:hovered": {"background_color": C._CLR_ACCENT_HOVER},
             "Button::tab_inactive": {"background_color": C._CLR_TAB_INACTIVE, "border_radius": 0,
                                      "color": C._CLR_TEXT_DIM, "font_size": 12, "border_width": 0},
-            "Button::tab_inactive:hovered": {"background_color": 0xFF2A3040},
+            "Button::tab_inactive:hovered": {"background_color": 0xFF252A34},
+            # Object list items
             "Button::obj_item": {"background_color": C._CLR_BG_INPUT, "border_radius": 3,
-                                 "color": C._CLR_TEXT, "font_size": 11, "border_width": 0},
-            "Button::obj_item:hovered": {"background_color": C._CLR_ACCENT_DIM},
+                                 "color": C._CLR_TEXT, "font_size": 11,
+                                 "border_color": C._CLR_BORDER, "border_width": 1},
+            "Button::obj_item:hovered": {"background_color": 0xFF233045,
+                                         "border_color": C._CLR_BORDER_FOCUS},
+            "Button::obj_item:pressed": {"background_color": C._CLR_ACCENT_DIM},
+            # Selected object item
+            "Button::obj_selected": {"background_color": C._CLR_OBJ_SELECTED, "border_radius": 3,
+                                     "color": C._CLR_TEXT_BRIGHT, "font_size": 11,
+                                     "border_color": C._CLR_BORDER_FOCUS, "border_width": 1},
+            "Button::obj_selected:hovered": {"background_color": 0xFF254468},
             # Containers
             "ScrollingFrame": {"background_color": C._CLR_BG_PANEL, "border_radius": 4,
                                "border_color": C._CLR_BORDER, "border_width": 1},
@@ -917,6 +953,19 @@ class GenerativeModelingExtension(omni.ext.IExt):
                 self._chat_container = ui.VStack(spacing=4, style={"margin": 8})
                 with self._chat_container:
                     ui.Label("Send a message to get started...", name="chat_system")
+
+            ui.Spacer(height=6)
+
+            # ── Live chat status bar ──
+            with ui.HStack(height=24, spacing=6,
+                           style={"background_color": C._CLR_STATUS_BG, "border_radius": 4,
+                                  "margin_width": 0, "margin_height": 0}):
+                ui.Spacer(width=6)
+                self._chat_status_dot = ui.Rectangle(width=7, height=7,
+                    style={"background_color": C._CLR_ACCENT_GREEN, "border_radius": 4})
+                ui.Spacer(width=5)
+                self._chat_status_label = ui.Label("Idle — load model to start",
+                    style={"color": C._CLR_TEXT_DIM, "font_size": 11})
 
             ui.Spacer(height=6)
 
@@ -1347,26 +1396,39 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
             return
         C = GenerativeModelingExtension
         self._object_list_container.clear()
+        self._selected_obj_btn = None  # reset reference on rebuild
         with self._object_list_container:
             if not self._object_table:
                 ui.Label("No objects found. Click Refresh.",
                          style={"color": C._CLR_DANGER, "font_size": 11})
             else:
+                current_path = self._manual_path_model.as_string if self._manual_path_model else ""
                 for name, path in list(self._object_table.items())[:30]:
-                    ui.Button(
+                    is_selected = (path == current_path)
+                    btn = ui.Button(
                         f"  {name}",
                         clicked_fn=lambda p=path, n=name: self._select_object(p, n),
-                        height=22, name="obj_item"
+                        height=22,
+                        name="obj_selected" if is_selected else "obj_item"
                     )
+                    if is_selected:
+                        self._selected_obj_btn = btn
                 if len(self._object_table) > 30:
                     ui.Label(f"  + {len(self._object_table) - 30} more...",
                             style={"color": C._CLR_TEXT_DIM, "font_size": 11})
     
     def _select_object(self, path: str, name: str) -> None:
-        """Select an object by setting the path field."""
+        """Select an object by setting the path field and highlighting its button."""
         if self._manual_path_model:
             self._manual_path_model.set_value(path)
-        self._set_status(f"Selected: {name} ({path})")
+        # Deselect previous
+        if self._selected_obj_btn is not None:
+            self._selected_obj_btn.name = "obj_item"
+        # We can't easily get the new button reference after click, so rebuild only selection highlight
+        # by rebuilding the list (cheap — max 30 items)
+        self._selected_obj_btn = None
+        self._rebuild_object_buttons()
+        self._set_status(f"Selected: {name}")
     
     def _get_selected_object_path(self) -> Optional[str]:
         """Get the USD path of the currently selected object."""
@@ -2060,22 +2122,28 @@ LLM Chat Commands:
             return False
     
     def _set_status(self, msg: str) -> None:
-        """Update the status label (thread-safe)."""
+        """Update the status label (thread-safe) and chat status bar."""
         C = GenerativeModelingExtension
 
         def _update():
             try:
+                # Bottom status bar
                 if self._status_label:
                     self._status_label.text = msg
-                # Update status dot color based on message content
+                lower = msg.lower()
+                if 'error' in lower or 'fail' in lower:
+                    dot_color = C._CLR_DANGER
+                elif 'processing' in lower or 'loading' in lower:
+                    dot_color = 0xFFFFB74D  # amber
+                else:
+                    dot_color = C._CLR_ACCENT_GREEN
                 if hasattr(self, '_status_dot') and self._status_dot:
-                    lower = msg.lower()
-                    if 'error' in lower or 'fail' in lower:
-                        self._status_dot.set_style({"background_color": C._CLR_DANGER, "border_radius": 3})
-                    elif 'processing' in lower or 'loading' in lower:
-                        self._status_dot.set_style({"background_color": 0xFFFFB74D, "border_radius": 3})
-                    else:
-                        self._status_dot.set_style({"background_color": C._CLR_ACCENT_GREEN, "border_radius": 3})
+                    self._status_dot.set_style({"background_color": dot_color, "border_radius": 3})
+                # Chat status bar (mirrors the same message + dot)
+                if hasattr(self, '_chat_status_label') and self._chat_status_label:
+                    self._chat_status_label.text = msg
+                if hasattr(self, '_chat_status_dot') and self._chat_status_dot:
+                    self._chat_status_dot.set_style({"background_color": dot_color, "border_radius": 4})
             except Exception as e:
                 print(f"[WARNING] Could not update status: {e}")
         
