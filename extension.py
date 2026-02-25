@@ -67,35 +67,35 @@ LOOKS_ROOT_PATH = Sdf.Path("/World/Looks")
 #   • color / mat  → mesh_path  (or mesh_subset_path when present)
 # ---------------------------------------------------------------------------
 WZL_PRODUCTION_MASK = [
-    {"id": "schrank_tuer_links", "label": "schrank tuer links",
+    {"id": "schrank_tuer_links", "label": "cabinet door left",
      "xform_path": "/Root/Halle/Proki/StaticMeshActor_4953",
      "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4953/Vollkunststoff_4mm__weis___0047304___425_mm_x_773_5_mm___18___2_5_mm_body1"},
-    {"id": "schrank_tuer_rechts", "label": "schrank tuer rechts",
+    {"id": "schrank_tuer_rechts", "label": "cabinet door right",
      "xform_path": "/Root/Halle/Proki/StaticMeshActor_4989",
      "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4989/Vollkunststoff_4mm__weis___0047304___425_mm_x_773_5_mm___18___2_5_mm_body1"},
-    {"id": "tischplatte_vorne", "label": "tisch platte vorne",
+    {"id": "tischplatte_vorne", "label": "table top front",
      "xform_path": "/Root/Halle/Proki/Kabine/Tischplatte_Buche/Tischplatte_40_1800x750__Buche_Multiplex___0063336_oa_10/StaticMeshActor_4622",
      "mesh_path": "/Root/Halle/Proki/Kabine/Tischplatte_Buche/Tischplatte_40_1800x750__Buche_Multiplex___0063336_oa_10/StaticMeshActor_4622/Tischplatte_40_1800x750__Buche_Multiplex___0063336_oa_10_body1"},
-    {"id": "tischplatte_hinten", "label": "tisch platte hinten",
+    {"id": "tischplatte_hinten", "label": "table top rear",
      "xform_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x379/StaticMeshActor_4650",
      "mesh_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x379/StaticMeshActor_4650/ITEM_0063336_TISCHPLATTE_40_1800X750_BUCHE_MULTIPLEX__LACKIERT_L_1800_B_750"},
-    {"id": "tischplatte_mitte", "label": "tisch platte mitte",
+    {"id": "tischplatte_mitte", "label": "table top middle",
      "xform_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x110/StaticMeshActor_4651",
      "mesh_path": "/Root/Halle/Proki/Kabine/Dummy_Tischplatte_40_1800x110/StaticMeshActor_4651/ITEM_0063336_TISCHPLATTE_40_1800X750_BUCHE_MULTIPLEX__LACKIERT_L_1800_B_750_2"},
-    {"id": "rahmen_vorne_oben", "label": "vorderer rahmen oben",
+    {"id": "rahmen_vorne_oben", "label": "front frame top",
      "xform_path": "/Root/Halle/Proki/StaticMeshActor_4409",
      "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4409/Profil_X_8_80x40_2N_K15_2T___XMS___0068620___1720_body1"},
-    {"id": "rahmen_links_vorne", "label": "rahmen links vorne",
+    {"id": "rahmen_links_vorne", "label": "frame left front",
      "xform_path": "/Root/Halle/Proki/P_Ra_hinten_1_2/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_2/StaticMeshActor_4422",
      "mesh_path": "/Root/Halle/Proki/P_Ra_hinten_1_2/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_2/StaticMeshActor_4422/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_body1"},
-    {"id": "rahmen_rechts_vorne", "label": "rahmen rechts vorne",
+    {"id": "rahmen_rechts_vorne", "label": "frame right front",
      "xform_path": "/Root/Halle/Proki/P_Ra_hinten_1/Profil_X_8_40_R80_90__K15___XMS___0067000___1934/StaticMeshActor_4417",
      "mesh_path": "/Root/Halle/Proki/P_Ra_hinten_1/Profil_X_8_40_R80_90__K15___XMS___0067000___1934/StaticMeshActor_4417/Profil_X_8_40_R80_90__K15___XMS___0067000___1934_body1"},
-    {"id": "tuerschloss", "label": "tuerschloss",
+    {"id": "tuerschloss", "label": "front lock",
      "xform_path": "/Root/Halle/Proki/StaticMeshActor_4954",
      "mesh_path": "/Root/Halle/Proki/StaticMeshActor_4954/Tuerschloss_X_8_Zn___0065266___V2_body1",
      "mesh_subset_path": "/Root/Halle/Proki/StaticMeshActor_4954/Tuerschloss_X_8_Zn___0065266___V2_body1/Section0"},
-    {"id": "sideboard_rechts", "label": "side board rechts",
+    {"id": "sideboard_rechts", "label": "sideboard right",
      "xform_path": "/Root/Halle/Proki/Kabine/Scheibeneinfassleiste_8_Al_Vollkunststoff_4mm__weis_1319_x_514_1___V5_2/Vollkunststoff_4mm__weis___00047304___1312_mm_x_507_mm___FlSch___V5_2/StaticMeshActor_4207",
      "mesh_path": "/Root/Halle/Proki/Kabine/Scheibeneinfassleiste_8_Al_Vollkunststoff_4mm__weis_1319_x_514_1___V5_2/Vollkunststoff_4mm__weis___00047304___1312_mm_x_507_mm___FlSch___V5_2/StaticMeshActor_4207/Vollkunststoff_4mm__weis___00047304___1312_mm_x_507_mm___FlSch___V5_body1"},
 ]
@@ -360,7 +360,7 @@ class AgentManager:
         
         config = self._load_config()
         if max_tokens is None:
-            max_tokens = config['model'].get('max_tokens', 256)
+            max_tokens = config['model'].get('max_tokens', 512)
         
         # Build schema description
         schema = response_model.model_json_schema()
@@ -442,9 +442,15 @@ class AgentManager:
                 print(f"[WARNING] Attempt {attempt + 1}/{max_retries} failed: {e}")
                 if attempt == max_retries - 1:
                     raise ValueError(f"Failed to generate valid {response_model.__name__} after {max_retries} attempts")
+                # Keep retry prompt minimal — large example JSONs exhaust token budget
+                minimal_example = json.dumps({
+                    "action_type": "color",
+                    "object_name": "example object",
+                    "color_r": 1.0, "color_g": 0.0, "color_b": 0.0
+                })
                 if response_text:
                     messages.append({"role": "assistant", "content": response_text})
-                    messages.append({"role": "user", "content": f"Invalid JSON. Return ONLY valid JSON with double quotes: {example_json}"})
+                messages.append({"role": "user", "content": f"Invalid JSON. Output ONLY a JSON object starting with {{ and ending with }}. Example: {minimal_example}"})
 
 
 # --------------------------
@@ -1069,6 +1075,7 @@ class GenerativeModelingExtension(omni.ext.IExt):
             with ui.HStack(height=22, spacing=3):
                 ui.Button("Clear Chat", clicked_fn=self._on_clear_chat, name="danger")
                 ui.Button("List Objects", clicked_fn=self._on_show_objects_in_chat, name="preset")
+                ui.Button("Manipulable Objects", clicked_fn=self._on_show_manipulable_objects, name="preset")
                 ui.Spacer()
     
     def _on_mode_changed(self, model) -> None:
@@ -1158,8 +1165,14 @@ class GenerativeModelingExtension(omni.ext.IExt):
             # Build the system prompt
             system_prompt = self._build_agent_system_prompt()
             
-            # Build user prompt with object table
-            user_prompt = f"USER REQUEST: {user_message}\n\nAVAILABLE OBJECTS:\n{json.dumps(self._object_table, indent=2)}"
+            # Build user prompt with object table.
+            # When WZL mask is active send only the label names — the xform paths are
+            # long USD strings that bloat the prompt and confuse smaller models.
+            if self._use_wzl_mask:
+                obj_list_text = "\n".join(f"  - {lbl}" for lbl in self._object_table.keys())
+                user_prompt = f"USER REQUEST: {user_message}\n\nAVAILABLE OBJECTS (WZL mask):\n{obj_list_text}"
+            else:
+                user_prompt = f"USER REQUEST: {user_message}\n\nAVAILABLE OBJECTS:\n{json.dumps(self._object_table, indent=2)}"
             
             # Convert deque to list for the conversation history
             history_list = list(self._chat_history)
@@ -1173,7 +1186,7 @@ class GenerativeModelingExtension(omni.ext.IExt):
                 user_prompt=user_prompt,
                 response_model=AgentResponse,
                 conversation_history=history_list,
-                max_tokens=256  # Reduced from 512 for faster response
+                max_tokens=512
             )
             
             elapsed = time.time() - start_time
@@ -1299,7 +1312,19 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
         stage = self._get_stage()
         if stage is None:
             return "No USD stage is loaded."
-        
+
+        # Handle light creation before any prim lookup — lights don't need an existing scene object
+        if action == "light":
+            position = (response.translate_x, response.translate_y, response.translate_z)
+            intensity = getattr(response, 'light_intensity', 5000.0)
+            color = (response.color_r, response.color_g, response.color_b)
+            self._light_counter += 1
+            light_name = response.object_name.replace(' ', '_') if response.object_name else f"Light_{self._light_counter}"
+            if self._create_light(stage, position, intensity, color, light_name):
+                return f"Created light '{light_name}' at ({position[0]}, {position[1]}, {position[2]}), intensity={intensity}, color=({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f})"
+            else:
+                return "Failed to create light."
+
         # Find the prim (and the matched label for WZL mesh-path lookup)
         prim = None
         matched_label = response.object_name  # fallback
@@ -1366,20 +1391,6 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
                 return f"Applied color RGB({response.color_r:.2f}, {response.color_g:.2f}, {response.color_b:.2f}) to '{response.object_name}' (rough={roughness:.2f}, metal={metallic:.2f}, {bound} prims)."
             else:
                 return f"Failed to apply color to '{response.object_name}'."
-        
-        elif action == "light":
-            # Create a light source
-            position = (response.translate_x, response.translate_y, response.translate_z)
-            intensity = getattr(response, 'light_intensity', 5000.0)
-            color = (response.color_r, response.color_g, response.color_b)
-            
-            self._light_counter += 1
-            light_name = response.object_name.replace(' ', '_') if response.object_name else f"Light_{self._light_counter}"
-            
-            if self._create_light(stage, position, intensity, color, light_name):
-                return f"Created light '{light_name}' at ({position[0]}, {position[1]}, {position[2]}), intensity={intensity}, color=({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f})"
-            else:
-                return "Failed to create light."
         
         elif action == "material":
             # Material change without necessarily changing color
@@ -1461,6 +1472,20 @@ MATERIAL PRESETS (always set color_r, color_g, color_b along with roughness and 
         """Show available objects in chat."""
         obj_list = ", ".join(self._object_table.keys())
         self._add_chat_message("System", f"Available objects: {obj_list}", is_user=False)
+
+    def _on_show_manipulable_objects(self) -> None:
+        """Show the WZL manipulable objects (or current object table) in chat."""
+        if self._use_wzl_mask:
+            lines = [f"  {i+1}. {entry['label']}" for i, entry in enumerate(WZL_PRODUCTION_MASK)]
+            msg = "Manipulable objects (WZL mask active):\n" + "\n".join(lines)
+        else:
+            labels = list(self._object_table.keys())
+            if labels:
+                lines = [f"  {i+1}. {lbl}" for i, lbl in enumerate(labels)]
+                msg = "Manipulable objects (current scene):\n" + "\n".join(lines)
+            else:
+                msg = "No objects loaded. Click Refresh or enable WZL Production Mask."
+        self._add_chat_message("System", msg, is_user=False)
     
     # --------------------------
     # Static Menu Actions - New Object-based
